@@ -1,0 +1,272 @@
+.upload-layout {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.form-group {
+  flex: 1 1 320px;
+  min-width: 0;
+  width: auto;
+  margin: 0;
+  padding: 1.5rem;
+  border: 1px solid #e4ded5;
+  border-radius: 18px;
+  background: #fbfaf7;
+  box-shadow: 0 14px 34px rgba(10, 26, 42, 0.07);
+}
+
+.form-group label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.form-group input[type='file'] {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px dashed #b9aa99;
+  border-radius: 10px;
+  background: #fff;
+  color: #53616d;
+}
+
+.file-meta {
+  margin-top: 0.5rem;
+  color: #374151;
+}
+
+.archive-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  color: #0a1a2a;
+  cursor: pointer;
+}
+
+.archive-option input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0.15rem 0 0;
+  accent-color: #f57c00;
+  flex: 0 0 auto;
+}
+
+.archive-option input:disabled {
+  cursor: not-allowed;
+}
+
+.archive-option span {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.archive-option small,
+.archive-note {
+  color: #66717b;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.archive-note {
+  margin-top: 0.65rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.actions button {
+  padding: 0.7rem 1rem;
+  border: 1px solid #f57c00;
+  border-radius: 999px;
+  background: #f57c00;
+  color: #0a1a2a;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.status {
+  min-height: 1.25rem;
+  margin-top: 0.5rem;
+}
+
+.status.success {
+  color: #166534;
+}
+
+.status.warning {
+  color: #a14e00;
+}
+
+.status.error {
+  color: #b91c1c;
+}
+
+.uploaded-files {
+  flex: 1 1 320px;
+  min-width: 0;
+  width: auto;
+  padding: 1.5rem;
+  border: 1px solid #e4ded5;
+  border-radius: 18px;
+  background-color: #fff;
+  box-shadow: 0 14px 34px rgba(10, 26, 42, 0.07);
+}
+
+.uploaded-files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.uploaded-files-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.uploaded-files-header button {
+  padding: 0.45rem 0.8rem;
+  border: 1px solid #0a1a2a;
+  border-radius: 999px;
+  background: #0a1a2a;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.uploaded-files-list {
+  list-style: none;
+  margin: 10rem;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.uploaded-files-list li {
+  border: 1px solid #eee9e2;
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  background: #fbfaf7;
+}
+
+.file-name {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.file-format {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.45rem;
+  border-radius: 5px;
+  background: #e8edf0;
+  color: #344653;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.file-format.pdfa-format {
+  background: #fce5c9;
+  color: #8c4300;
+}
+
+.file-details {
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.processing-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+  color: #53616d;
+  font-size: 0.74rem;
+}
+
+.processing-state span {
+  padding: 0.15rem 0.42rem;
+  border-radius: 5px;
+  background: #edf2ee;
+}
+
+.processing-state.state-failed span:first-child,
+.file-failure {
+  color: #a32121;
+}
+
+.correlation-id {
+  margin-top: 0.25rem;
+  color: #7a838a;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+}
+
+.processing-state.state-failed span:first-child {
+  background: #fbe9e7;
+}
+
+.file-failure {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.file-conversion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.file-conversion-actions button {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid #c9d1d5;
+  border-radius: 999px;
+  background: #fff;
+  color: #0a1a2a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.file-conversion-actions button:last-child {
+  border-color: #f0b067;
+  background: #fff4e7;
+}
+
+.file-conversion-actions button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+@media (max-width: 520px) {
+  .file-details {
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+}
+

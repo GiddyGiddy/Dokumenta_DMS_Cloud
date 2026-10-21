@@ -1,0 +1,109 @@
+<div class="upload-layout">
+    <div class="form-group">
+        <label for="file">Choose File</label>
+        <input
+            type="file"
+            id="file"
+            #fileInputRef
+            (change)="onFileSelected($event)"
+            [disabled]="isUploading"
+        />
+
+        <p class="file-meta">{{ selectedFileName }}</p>
+
+        <label class="archive-option">
+            <input
+                type="checkbox"
+                [checked]="archiveAsPdfA"
+                [disabled]="isUploading || !canArchiveAsPdfA"
+                (change)="setArchiveAsPdfA($event)"
+            />
+            <span>
+                <strong>Als PDF/A archivieren</strong>
+                <small>Erstellt eine separate PDF/A-Kopie. Das Original bleibt erhalten.</small>
+            </span>
+        </label>
+        <p class="archive-note" *ngIf="fileToUpload && !canArchiveAsPdfA">
+            PDF/A-Archivierung ist für PDF-, Word-, Excel- und OpenDocument-Dateien verfügbar.
+        </p>
+
+        <div class="actions">
+            <button type="button" (click)="uploadFileToActivity()" [disabled]="!fileToUpload || isUploading">
+                {{ isUploading ? 'Uploading...' : 'Upload' }}
+            </button>
+            <button type="button" (click)="clearSelection(fileInputRef)" [disabled]="isUploading">
+                Clear
+            </button>
+        </div>
+
+        <p class="status success">{{ successMessage }}</p>
+        <p class="status warning">{{ warningMessage }}</p>
+        <p class="status error">{{ errorMessage }}</p>
+    </div>
+
+    <div class="uploaded-files">
+        <div class="uploaded-files-header">
+            <h3>Uploaded Files</h3>
+            <button type="button" (click)="loadUploadedFiles()" [disabled]="isLoadingFiles">
+                {{ isLoadingFiles ? 'Loading...' : 'Refresh' }}
+            </button>
+        </div>
+        <p class="status success" *ngIf="conversionMessage">{{ conversionMessage }}</p>
+        <p class="status error" *ngIf="conversionErrorMessage">{{ conversionErrorMessage }}</p>
+
+        <p class="file-meta" *ngIf="!isLoadingFiles && uploadedFiles.length === 0">
+            No files uploaded yet.
+        </p>
+
+        <ul *ngIf="uploadedFiles.length > 0" class="uploaded-files-list">
+            <li *ngFor="let file of uploadedFiles">
+                <div class="file-name">
+                    <span class="file-format" [class.pdfa-format]="getDocumentFormat(file) === 'PDF/A'">
+                        {{ getDocumentFormat(file) }}
+                    </span>
+                    <a
+                        *ngIf="getFileKind(file) !== 'other'; else plainFileName"
+                        href="#"
+                        (click)="openFile(file, $event)"
+                    >{{ file.originalFileName }}</a>
+                    <ng-template #plainFileName>
+                        <a href="#" (click)="openFile(file, $event)">{{ file.originalFileName }}</a>
+                        <span class="file-meta"> (no in-browser preview, downloads instead)</span>
+                    </ng-template>
+                </div>
+                <div class="file-details">
+                    <span>{{ formatSize(file.size) }}</span>
+                    <span>{{ file.uploadedAt | date:'medium' }}</span>
+                </div>
+                <div class="processing-state" [class.state-failed]="file.processingStatus === 'Failed'">
+                    <span>{{ file.processingStatus }}</span>
+                    <span>{{ file.requestedOutputFormat }}</span>
+                </div>
+                <div class="file-revisions-link">
+                    <a [routerLink]="['/documents', file.storedFileName, 'revisions']">Verlauf / Bearbeiten</a>
+                </div>
+                <div class="correlation-id">Tracking ID: {{ file.correlationId }}</div>
+                <p class="file-failure" *ngIf="file.failureSummary">{{ file.failureSummary }}</p>
+                <div class="file-conversion-actions" *ngIf="canConvertToPdf(file) || canConvertToPdfA(file)">
+                    <button
+                        *ngIf="canConvertToPdf(file)"
+                        type="button"
+                        (click)="convertUploadedDocument(file, false)"
+                        [disabled]="conversionInProgressId !== null"
+                    >
+                        {{ conversionInProgressId === file.storedFileName ? 'Converting...' : 'Create PDF' }}
+                    </button>
+                    <button
+                        *ngIf="canConvertToPdfA(file)"
+                        type="button"
+                        (click)="convertUploadedDocument(file, true)"
+                        [disabled]="conversionInProgressId !== null"
+                    >
+                        Create PDF/A
+                    </button>
+                </div>
+            </li>
+        </ul>
+    </div>
+</div>
+

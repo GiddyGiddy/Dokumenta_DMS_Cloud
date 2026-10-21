@@ -1,0 +1,106 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Identity.Web;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.OpenApi;
+using DocuManagementApp.Data;
+using DocuManagementApp.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.OpenApi.Models;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddOpenApi();
+builder.Services.AddSwaggerGen();
+builder.Services.AddControllers();
+
+builder.Services.AddMicrosoftIdentityWebApiAuthentication(builder.Configuration, "AzureAd");
+builder.Services.PostConfigure<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>(
+  Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme,
+  o =>
+  {
+    o.MapInboundClaims = false;
+    o.TokenValidationParameters.RoleClaimType = "roles";
+    o.TokenValidationParameters.NameClaimType = "name";
+  });
+builder.Services.AddAuthorization(o =>
+{
+  o.AddPolicy("DmsRead", p => p.RequireRole("Viewer", "Contributor", "Reviewer", "Admin"));
+  o.AddPolicy("DmsWrite", p => p.RequireRole("Contributor", "Reviewer", "Admin"));
+  o.AddPolicy("DmsReview", p => p.RequireRole("Reviewer", "Admin"));
+  o.AddPolicy("DmsAdmin", p => p.RequireRole("Admin"));
+});
+builder.Services.AddDbContext<AppDbContext>(options =>
+  options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddScoped<IDocumentStorageService, DocumentStorageService>();
+builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
+builder.Services.AddScoped<IOutboxStore, EfOutboxStore>();
+builder.Services.AddScoped<IDocumentRevisionService, DocumentRevisionService>();
+builder.Services.AddOptions<SearchProxyOptions>()
+  .Bind(builder.Configuration.GetSection("SearchProxy"))
+  .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _), "SearchProxy:BaseUrl must be an absolute URL.")
+  .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.ApiKey), "SearchProxy:ApiKey must be configured when the proxy is enabled.")
+  .ValidateOnStart();
+builder.Services.AddHttpClient<SearchServiceProxy>((serviceProvider, client) =>
+{
+  var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SearchProxyOptions>>().Value;
+  client.BaseAddress = new Uri(options.BaseUrl.EndsWith('/') ? options.BaseUrl : options.BaseUrl + "/");
+  client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddTransient<PdfADocumentService>();
+builder.Services.AddSingleton<IPdfAProcessRunner, PdfAProcessRunner>();
+builder.Services.AddSingleton<IOfficeToPdfConversionService, OfficeToPdfConversionService>();
+builder.Services.AddOptions<OutboxPublisherOptions>()
+  .Bind(builder.Configuration.GetSection("RabbitMq"))
+  .Validate(options => !string.IsNullOrWhiteSpace(options.UserName), "RabbitMq:UserName must be supplied through user secrets or environment variables.")
+  .Validate(options => !string.IsNullOrWhiteSpace(options.Password), "RabbitMq:Password must be supplied through user secrets or environment variables.")
+  .Validate(options => options.Port is > 0 and <= 65535, "RabbitMq:Port must be a valid TCP port.")
+  .Validate(options => options.BatchSize > 0 && options.LeaseSeconds > 0 && options.ConfirmTimeoutSeconds > 0, "RabbitMQ batch, lease, and confirm timeout settings must be positive.")
+  .ValidateOnStart();
+builder.Services.AddSingleton<IOutboxEventPublisher, RabbitMqOutboxEventPublisher>();
+builder.Services.AddHostedService<OutboxPublisherService>();
+builder.Services.AddHttpClient<IPdfAProcessingService, GhostscriptVeraPdfAProcessingService>(client =>
+{
+  client.Timeout = Timeout.InfiniteTimeSpan;
+});
+
+builder.Services.AddCors(options =>
+{
+  options.AddPolicy("AllowAngularDevClient",
+    builder =>
+    {
+      builder
+        .WithOrigins("http://localhost:4200")
+        .AllowAnyHeader()
+        .AllowAnyMethod();
+    });
+});
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+else
+{
+  app.UseHttpsRedirection();
+}
+app.UseCors("AllowAngularDevClient");
+app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+
+
+
+app.Run();
+
+
+
