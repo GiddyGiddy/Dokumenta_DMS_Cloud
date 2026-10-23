@@ -7,6 +7,8 @@ public sealed class DocumentRecord
   public string OriginalFileName { get; set; } = string.Empty;
   public string ContentType { get; set; } = "application/octet-stream";
   public byte[] FileContent { get; set; } = Array.Empty<byte>();
+  // Set when the bytes live in Blob Storage; FileContent is then empty.
+  public string? BlobName { get; set; }
   public long SizeBytes { get; set; }
   public DateTimeOffset UploadedAtUtc { get; set; } = DateTimeOffset.UtcNow;
   public DocumentProcessingStatus ProcessingStatus { get; set; } = DocumentProcessingStatus.Completed;

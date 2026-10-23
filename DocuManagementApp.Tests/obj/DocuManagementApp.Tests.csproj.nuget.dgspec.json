@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\angular_asp_core_web_api\\DocuManagementApp.Tests\\DocuManagementApp.Tests.csproj": {}
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp.Tests\\DocuManagementApp.Tests.csproj": {}
   },
   "projects": {
-    "C:\\angular_asp_core_web_api\\DocuManagementApp.Tests\\DocuManagementApp.Tests.csproj": {
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp.Tests\\DocuManagementApp.Tests.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\angular_asp_core_web_api\\DocuManagementApp.Tests\\DocuManagementApp.Tests.csproj",
+        "projectUniqueName": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp.Tests\\DocuManagementApp.Tests.csproj",
         "projectName": "DocuManagementApp.Tests",
-        "projectPath": "C:\\angular_asp_core_web_api\\DocuManagementApp.Tests\\DocuManagementApp.Tests.csproj",
+        "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp.Tests\\DocuManagementApp.Tests.csproj",
         "packagesPath": "C:\\Users\\gideon.ayodele\\.nuget\\packages\\",
-        "outputPath": "C:\\angular_asp_core_web_api\\DocuManagementApp.Tests\\obj\\",
+        "outputPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp.Tests\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\gideon.ayodele\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -26,17 +26,17 @@
           "net9.0": {
             "targetAlias": "net9.0",
             "projectReferences": {
-              "C:\\angular_asp_core_web_api\\DocuManagementApp\\DocuManagementApp.csproj": {
-                "projectPath": "C:\\angular_asp_core_web_api\\DocuManagementApp\\DocuManagementApp.csproj"
+              "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\DocuManagementApp.csproj": {
+                "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\DocuManagementApp.csproj"
               },
-              "C:\\angular_asp_core_web_api\\ExtractionService\\ExtractionService.csproj": {
-                "projectPath": "C:\\angular_asp_core_web_api\\ExtractionService\\ExtractionService.csproj"
+              "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\ExtractionService.csproj": {
+                "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\ExtractionService.csproj"
               },
-              "C:\\angular_asp_core_web_api\\OrchestratorService\\OrchestratorService.csproj": {
-                "projectPath": "C:\\angular_asp_core_web_api\\OrchestratorService\\OrchestratorService.csproj"
+              "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\OrchestratorService.csproj": {
+                "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\OrchestratorService.csproj"
               },
-              "C:\\angular_asp_core_web_api\\SearchService\\SearchService.csproj": {
-                "projectPath": "C:\\angular_asp_core_web_api\\SearchService\\SearchService.csproj"
+              "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\SearchService.csproj": {
+                "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\SearchService.csproj"
               }
             }
           }
@@ -100,14 +100,14 @@
         }
       }
     },
-    "C:\\angular_asp_core_web_api\\DocuManagementApp\\DocuManagementApp.csproj": {
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\DocuManagementApp.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\angular_asp_core_web_api\\DocuManagementApp\\DocuManagementApp.csproj",
+        "projectUniqueName": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\DocuManagementApp.csproj",
         "projectName": "DocuManagementApp",
-        "projectPath": "C:\\angular_asp_core_web_api\\DocuManagementApp\\DocuManagementApp.csproj",
+        "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\DocuManagementApp.csproj",
         "packagesPath": "C:\\Users\\gideon.ayodele\\.nuget\\packages\\",
-        "outputPath": "C:\\angular_asp_core_web_api\\DocuManagementApp\\obj\\",
+        "outputPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\gideon.ayodele\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -140,6 +140,14 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "dependencies": {
+            "Azure.Identity": {
+              "target": "Package",
+              "version": "[1.21.0, )"
+            },
+            "Azure.Storage.Blobs": {
+              "target": "Package",
+              "version": "[12.30.1, )"
+            },
             "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
               "version": "[9.0.14, )"
@@ -202,14 +210,14 @@
         }
       }
     },
-    "C:\\angular_asp_core_web_api\\ExtractionService\\ExtractionService.csproj": {
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\ExtractionService.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\angular_asp_core_web_api\\ExtractionService\\ExtractionService.csproj",
+        "projectUniqueName": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\ExtractionService.csproj",
         "projectName": "ExtractionService",
-        "projectPath": "C:\\angular_asp_core_web_api\\ExtractionService\\ExtractionService.csproj",
+        "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\ExtractionService.csproj",
         "packagesPath": "C:\\Users\\gideon.ayodele\\.nuget\\packages\\",
-        "outputPath": "C:\\angular_asp_core_web_api\\ExtractionService\\obj\\",
+        "outputPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\gideon.ayodele\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -282,14 +290,14 @@
         }
       }
     },
-    "C:\\angular_asp_core_web_api\\OrchestratorService\\OrchestratorService.csproj": {
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\OrchestratorService.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\angular_asp_core_web_api\\OrchestratorService\\OrchestratorService.csproj",
+        "projectUniqueName": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\OrchestratorService.csproj",
         "projectName": "OrchestratorService",
-        "projectPath": "C:\\angular_asp_core_web_api\\OrchestratorService\\OrchestratorService.csproj",
+        "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\OrchestratorService.csproj",
         "packagesPath": "C:\\Users\\gideon.ayodele\\.nuget\\packages\\",
-        "outputPath": "C:\\angular_asp_core_web_api\\OrchestratorService\\obj\\",
+        "outputPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\gideon.ayodele\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -355,14 +363,14 @@
         }
       }
     },
-    "C:\\angular_asp_core_web_api\\SearchService\\SearchService.csproj": {
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\SearchService.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\angular_asp_core_web_api\\SearchService\\SearchService.csproj",
+        "projectUniqueName": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\SearchService.csproj",
         "projectName": "SearchService",
-        "projectPath": "C:\\angular_asp_core_web_api\\SearchService\\SearchService.csproj",
+        "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\SearchService.csproj",
         "packagesPath": "C:\\Users\\gideon.ayodele\\.nuget\\packages\\",
-        "outputPath": "C:\\angular_asp_core_web_api\\SearchService\\obj\\",
+        "outputPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\gideon.ayodele\\AppData\\Roaming\\NuGet\\NuGet.Config"

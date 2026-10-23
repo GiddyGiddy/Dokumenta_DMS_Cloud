@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { MsalService } from '@azure/msal-angular';
-import { environment } from '../environments/environment.development';
+import { environment } from '../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {

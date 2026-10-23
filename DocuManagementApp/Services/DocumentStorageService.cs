@@ -45,10 +45,12 @@ public interface IDocumentStorageService
 public sealed class DocumentStorageService : IDocumentStorageService
 {
   private readonly AppDbContext _dbContext;
+  private readonly IDocumentBlobStore _blobStore;
 
-  public DocumentStorageService(AppDbContext dbContext)
+  public DocumentStorageService(AppDbContext dbContext, IDocumentBlobStore? blobStore = null)
   {
     _dbContext = dbContext;
+    _blobStore = blobStore ?? new DisabledDocumentBlobStore();
   }
 
   // Shared so the download endpoint can also fix up legacy octet-stream uploads by extension.
@@ -95,18 +97,24 @@ public sealed class DocumentStorageService : IDocumentStorageService
 
   public async Task<DocumentDownloadResult?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken)
   {
-    return await _dbContext.Documents
+    var row = await _dbContext.Documents
       .AsNoTracking()
       .Where(x => x.Id == id)
-      .Select(x => new DocumentDownloadResult
-      {
-        Id = x.Id,
-        CorrelationId = x.CorrelationId,
-        OriginalFileName = x.OriginalFileName,
-        ContentType = x.ContentType,
-        Content = x.FileContent
-      })
+      .Select(x => new { x.Id, x.CorrelationId, x.OriginalFileName, x.ContentType, x.FileContent, x.BlobName })
       .SingleOrDefaultAsync(cancellationToken);
+    if (row is null) return null;
+
+    var content = string.IsNullOrEmpty(row.BlobName)
+      ? row.FileContent
+      : await _blobStore.ReadAsync(row.BlobName, cancellationToken);
+    return new DocumentDownloadResult
+    {
+      Id = row.Id,
+      CorrelationId = row.CorrelationId,
+      OriginalFileName = row.OriginalFileName,
+      ContentType = row.ContentType,
+      Content = content
+    };
   }
 }
 }

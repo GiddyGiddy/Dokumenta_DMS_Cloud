@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "iE7x93DZJgY=",
+  "dgSpecHash": "Qxej7bP/Hh4=",
   "success": true,
-  "projectFilePath": "C:\\angular_asp_core_web_api\\OrchestratorService\\OrchestratorService.csproj",
+  "projectFilePath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\OrchestratorService.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\gideon.ayodele\\.nuget\\packages\\microsoft.extensions.configuration\\9.0.4\\microsoft.extensions.configuration.9.0.4.nupkg.sha512",
     "C:\\Users\\gideon.ayodele\\.nuget\\packages\\microsoft.extensions.configuration.abstractions\\9.0.4\\microsoft.extensions.configuration.abstractions.9.0.4.nupkg.sha512",

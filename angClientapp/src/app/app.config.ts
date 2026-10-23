@@ -15,7 +15,7 @@ import {
 } from '@azure/msal-angular';
 
 import { routes } from './app.routes';
-import { environment } from '../environments/environment.development';
+import { environment } from '../environments/environment';
 
 export function msalInstanceFactory(): IPublicClientApplication {
   return new PublicClientApplication({

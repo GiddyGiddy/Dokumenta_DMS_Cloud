@@ -11,6 +11,15 @@ public sealed class FoundryModelOptions
     public int TimeoutSeconds { get; set; } = 600;
     public FoundryLocalModelOptions FoundryLocal { get; set; } = new();
     public MicrosoftFoundryModelOptions MicrosoftFoundry { get; set; } = new();
+    public GeminiModelOptions Gemini { get; set; } = new();
+}
+
+// Google AI Studio via its OpenAI-compatible endpoint.
+public sealed class GeminiModelOptions
+{
+    public string Endpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/openai/";
+    public string ModelName { get; set; } = "gemini-2.5-flash";
+    public string ApiKey { get; set; } = string.Empty;
 }
 
 public sealed class FoundryLocalModelOptions
@@ -168,7 +177,7 @@ public sealed class FoundryDocumentAgent(
         {
             ["model"] = modelName,
             ["temperature"] = 0,
-            [provider == "FoundryLocal" ? "max_tokens" : "max_completion_tokens"] = MaxOutputTokens,
+            [provider is "FoundryLocal" or "Gemini" ? "max_tokens" : "max_completion_tokens"] = MaxOutputTokens,
             ["response_format"] = new { type = "json_object" },
             ["messages"] = new[]
             {
@@ -180,7 +189,7 @@ public sealed class FoundryDocumentAgent(
 
         if (!string.IsNullOrWhiteSpace(apiKey))
         {
-            if (provider == "FoundryLocal")
+            if (provider is "FoundryLocal" or "Gemini")
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             }
@@ -242,8 +251,17 @@ public sealed class FoundryDocumentAgent(
                 "MicrosoftFoundry");
         }
 
+        if (string.Equals(settings.Provider, "Gemini", StringComparison.OrdinalIgnoreCase))
+        {
+            return RequireProviderSettings(
+                settings.Gemini.Endpoint,
+                settings.Gemini.ModelName,
+                settings.Gemini.ApiKey,
+                "Gemini");
+        }
+
         throw new FoundryModelConfigurationException(
-            "Foundry:Provider must be either 'FoundryLocal' or 'MicrosoftFoundry'.");
+            "Foundry:Provider must be 'FoundryLocal', 'MicrosoftFoundry' or 'Gemini'.");
     }
 
     private static (string Endpoint, string ModelName, string ApiKey, string Provider) RequireProviderSettings(
@@ -262,9 +280,9 @@ public sealed class FoundryDocumentAgent(
             throw new FoundryModelConfigurationException($"Foundry:{provider} model name or deployment name must be configured.");
         }
 
-        if (provider == "MicrosoftFoundry" && string.IsNullOrWhiteSpace(apiKey))
+        if (provider is "MicrosoftFoundry" or "Gemini" && string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new FoundryModelConfigurationException("Foundry:MicrosoftFoundry:ApiKey must be configured.");
+            throw new FoundryModelConfigurationException($"Foundry:{provider}:ApiKey must be configured.");
         }
 
         return (endpoint, modelName, apiKey, provider);

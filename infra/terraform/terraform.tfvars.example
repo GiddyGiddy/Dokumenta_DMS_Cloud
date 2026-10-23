@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars (git-ignored). Supply secrets via TF_VAR_<name> environment variables:
+# pg_admin_password, rabbit_password, download_api_key, artifact_api_key, search_api_key,
+# gemini_key, openai_key, document_intelligence_key
+subscription_id     = "00000000-0000-0000-0000-000000000000"
+resource_group_name = "rg-dokumenta"
+deploy_apps         = false

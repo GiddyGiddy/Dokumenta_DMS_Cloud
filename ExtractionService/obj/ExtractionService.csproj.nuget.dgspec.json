@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\angular_asp_core_web_api\\ExtractionService\\ExtractionService.csproj": {}
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\ExtractionService.csproj": {}
   },
   "projects": {
-    "C:\\angular_asp_core_web_api\\ExtractionService\\ExtractionService.csproj": {
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\ExtractionService.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\angular_asp_core_web_api\\ExtractionService\\ExtractionService.csproj",
+        "projectUniqueName": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\ExtractionService.csproj",
         "projectName": "ExtractionService",
-        "projectPath": "C:\\angular_asp_core_web_api\\ExtractionService\\ExtractionService.csproj",
+        "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\ExtractionService.csproj",
         "packagesPath": "C:\\Users\\gideon.ayodele\\.nuget\\packages\\",
-        "outputPath": "C:\\angular_asp_core_web_api\\ExtractionService\\obj\\",
+        "outputPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\gideon.ayodele\\AppData\\Roaming\\NuGet\\NuGet.Config"

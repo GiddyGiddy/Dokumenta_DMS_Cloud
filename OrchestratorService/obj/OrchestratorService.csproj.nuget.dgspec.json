@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\angular_asp_core_web_api\\OrchestratorService\\OrchestratorService.csproj": {}
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\OrchestratorService.csproj": {}
   },
   "projects": {
-    "C:\\angular_asp_core_web_api\\OrchestratorService\\OrchestratorService.csproj": {
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\OrchestratorService.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\angular_asp_core_web_api\\OrchestratorService\\OrchestratorService.csproj",
+        "projectUniqueName": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\OrchestratorService.csproj",
         "projectName": "OrchestratorService",
-        "projectPath": "C:\\angular_asp_core_web_api\\OrchestratorService\\OrchestratorService.csproj",
+        "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\OrchestratorService.csproj",
         "packagesPath": "C:\\Users\\gideon.ayodele\\.nuget\\packages\\",
-        "outputPath": "C:\\angular_asp_core_web_api\\OrchestratorService\\obj\\",
+        "outputPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\OrchestratorService\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\gideon.ayodele\\AppData\\Roaming\\NuGet\\NuGet.Config"

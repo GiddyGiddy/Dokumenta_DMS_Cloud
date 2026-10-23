@@ -35,8 +35,21 @@ public interface IDocumentRevisionService
 public sealed class DocumentRevisionService : IDocumentRevisionService
 {
   private readonly AppDbContext _db;
+  private readonly IDocumentBlobStore _blobStore;
 
-  public DocumentRevisionService(AppDbContext db) => _db = db;
+  public DocumentRevisionService(AppDbContext db, IDocumentBlobStore? blobStore = null)
+  {
+    _db = db;
+    _blobStore = blobStore ?? new DisabledDocumentBlobStore();
+  }
+
+  private async Task HydrateAsync(DocumentRevision revision, CancellationToken ct)
+  {
+    if (!string.IsNullOrEmpty(revision.BlobName))
+    {
+      revision.FileContent = await _blobStore.ReadAsync(revision.BlobName, ct);
+    }
+  }
 
   public async Task<IReadOnlyList<RevisionInfo>?> ListAsync(Guid documentId, CancellationToken ct = default)
   {
@@ -76,23 +89,30 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
   {
     var rev = await _db.DocumentRevisions.AsNoTracking()
       .FirstOrDefaultAsync(r => r.DocumentId == documentId && r.RevisionNumber == revisionNumber, ct);
-    if (rev is not null) return rev;
+    if (rev is not null)
+    {
+      await HydrateAsync(rev, ct);
+      return rev;
+    }
 
     // Unedited document: revision 1 is the original upload.
     if (revisionNumber != 1) return null;
     var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, ct);
     if (doc is null || doc.CurrentRevisionNumber != 0) return null;
 
-    return new DocumentRevision
+    var original = new DocumentRevision
     {
       DocumentId = doc.Id,
       RevisionNumber = 1,
       FileContent = doc.FileContent,
+      BlobName = doc.BlobName,
       ContentType = doc.ContentType,
       SizeBytes = doc.SizeBytes,
       EditedBy = "original",
       CreatedAtUtc = doc.UploadedAtUtc
     };
+    await HydrateAsync(original, ct);
+    return original;
   }
 
   public async Task<RevisionResult> CreateAsync(Guid documentId, byte[] content, string? contentType, int expectedRevision, string editedBy, string? comment, CancellationToken ct = default)
@@ -120,11 +140,19 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
         DocumentId = doc.Id,
         RevisionNumber = 1,
         FileContent = doc.FileContent,
+        BlobName = doc.BlobName,
         ContentType = doc.ContentType,
         SizeBytes = doc.SizeBytes,
         EditedBy = "original",
         CreatedAtUtc = doc.UploadedAtUtc
       });
+    }
+
+    var resolvedContentType = string.IsNullOrWhiteSpace(contentType) ? doc.ContentType : contentType;
+    string? newBlobName = null;
+    if (_blobStore.IsEnabled)
+    {
+      newBlobName = await _blobStore.SaveAsync(doc.Id, content, resolvedContentType, ct);
     }
 
     var next = current + 1;
@@ -133,8 +161,9 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
       DocumentId = doc.Id,
       RevisionNumber = next,
       BaseRevisionNumber = current,
-      FileContent = content,
-      ContentType = string.IsNullOrWhiteSpace(contentType) ? doc.ContentType : contentType,
+      FileContent = newBlobName is null ? content : Array.Empty<byte>(),
+      BlobName = newBlobName,
+      ContentType = resolvedContentType,
       SizeBytes = content.LongLength,
       EditedBy = string.IsNullOrWhiteSpace(editedBy) ? "anonymous" : editedBy,
       Comment = comment,
@@ -143,6 +172,7 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
     _db.DocumentRevisions.Add(revision);
 
     doc.FileContent = revision.FileContent;
+    doc.BlobName = revision.BlobName;
     doc.ContentType = revision.ContentType;
     doc.SizeBytes = revision.SizeBytes;
     doc.CurrentRevisionNumber = next;

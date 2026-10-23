@@ -32,7 +32,7 @@ builder.Services.AddOptions<ExtractionArtifactApiOptions>()
     .ValidateOnStart();
 builder.Services.AddOptions<FoundryModelOptions>()
     .Bind(builder.Configuration.GetSection("Foundry"))
-    .Validate(options => options.Provider is "FoundryLocal" or "MicrosoftFoundry", "Foundry:Provider must be FoundryLocal or MicrosoftFoundry.")
+    .Validate(options => options.Provider is "FoundryLocal" or "MicrosoftFoundry" or "Gemini", "Foundry:Provider must be FoundryLocal, MicrosoftFoundry, or Gemini.")
     .Validate(options => options.TimeoutSeconds > 0, "Foundry:TimeoutSeconds must be positive.")
     .ValidateOnStart();
 builder.Services.AddHttpClient<FoundryDocumentAgent>((serviceProvider, client) =>

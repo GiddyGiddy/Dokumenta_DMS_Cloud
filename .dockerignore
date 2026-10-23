@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/.angular/
+**/.vs/
+.git/
+angClientapp/
+DocuManagementApp.Tests/
+DocuManagementApp/Uploads/
+**/appsettings.Development.json
+**/*.user

@@ -1,0 +1,27 @@
+# Build any .NET service from the repo root:
+#   docker build -f Dockerfile.service --build-arg PROJECT=SearchService -t search .
+#   az acr build -r <acr> -f Dockerfile.service --build-arg PROJECT=SearchService -t search:1 .
+# DocuManagementApp only: add --build-arg WITH_OFFICE_TOOLS=true to bundle LibreOffice + Ghostscript.
+ARG PROJECT=DocuManagementApp
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+ARG PROJECT
+WORKDIR /src
+COPY ${PROJECT}/ ${PROJECT}/
+RUN dotnet publish "${PROJECT}/${PROJECT}.csproj" -c Release -o /app /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+ARG PROJECT
+ARG WITH_OFFICE_TOOLS=false
+RUN if [ "$WITH_OFFICE_TOOLS" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends libreoffice-writer libreoffice-calc ghostscript \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
+WORKDIR /app
+COPY --from=build /app .
+ENV ASPNETCORE_HTTP_PORTS="" \
+    ASPNETCORE_ENVIRONMENT=Production \
+    APP_DLL=${PROJECT}.dll
+USER $APP_UID
+EXPOSE 8080
+ENTRYPOINT ["sh", "-c", "exec dotnet \"$APP_DLL\""]

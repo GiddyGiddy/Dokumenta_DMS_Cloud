@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Identity.Web;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.OpenApi;
@@ -34,6 +35,16 @@ builder.Services.AddAuthorization(o =>
 });
 builder.Services.AddDbContext<AppDbContext>(options =>
   options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+var blobOptions = builder.Configuration.GetSection("BlobStorage").Get<BlobStorageOptions>() ?? new BlobStorageOptions();
+if (blobOptions.IsConfigured)
+{
+  builder.Services.AddSingleton(blobOptions);
+  builder.Services.AddSingleton<IDocumentBlobStore, AzureDocumentBlobStore>();
+}
+else
+{
+  builder.Services.AddSingleton<IDocumentBlobStore, DisabledDocumentBlobStore>();
+}
 builder.Services.AddScoped<IDocumentStorageService, DocumentStorageService>();
 builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
 builder.Services.AddScoped<IOutboxStore, EfOutboxStore>();
@@ -66,19 +77,29 @@ builder.Services.AddHttpClient<IPdfAProcessingService, GhostscriptVeraPdfAProces
   client.Timeout = Timeout.InfiniteTimeSpan;
 });
 
+// Cors:AllowedOrigins__0, __1... in production (e.g. the Static Web App URL).
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+  ?? new[] { "http://localhost:4200" };
 builder.Services.AddCors(options =>
 {
   options.AddPolicy("AllowAngularDevClient",
     builder =>
     {
       builder
-        .WithOrigins("http://localhost:4200")
+        .WithOrigins(allowedOrigins)
         .AllowAnyHeader()
         .AllowAnyMethod();
     });
 });
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+  options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+  options.KnownNetworks.Clear();
+  options.KnownProxies.Clear();
+});
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

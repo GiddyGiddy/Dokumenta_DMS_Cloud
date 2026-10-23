@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\angular_asp_core_web_api\\SearchService\\SearchService.csproj": {}
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\SearchService.csproj": {}
   },
   "projects": {
-    "C:\\angular_asp_core_web_api\\SearchService\\SearchService.csproj": {
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\SearchService.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\angular_asp_core_web_api\\SearchService\\SearchService.csproj",
+        "projectUniqueName": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\SearchService.csproj",
         "projectName": "SearchService",
-        "projectPath": "C:\\angular_asp_core_web_api\\SearchService\\SearchService.csproj",
+        "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\SearchService.csproj",
         "packagesPath": "C:\\Users\\gideon.ayodele\\.nuget\\packages\\",
-        "outputPath": "C:\\angular_asp_core_web_api\\SearchService\\obj\\",
+        "outputPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\SearchService\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\gideon.ayodele\\AppData\\Roaming\\NuGet\\NuGet.Config"

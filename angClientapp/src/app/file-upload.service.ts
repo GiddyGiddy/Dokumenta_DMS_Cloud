@@ -4,7 +4,7 @@ import { Observable } from 'rxjs/internal/Observable';
 import { map, catchError } from 'rxjs/operators';
 import { of, from } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
-import { environment } from '../environments/environment.development';
+import { environment } from '../environments/environment';
 
 interface UploadFileRequest {
   fileName: string;

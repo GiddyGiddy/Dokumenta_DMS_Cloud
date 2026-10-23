@@ -1,0 +1,6 @@
+
+.azure-secrets.json
+
+.terraform/
+*.tfstate*
+terraform.tfvars

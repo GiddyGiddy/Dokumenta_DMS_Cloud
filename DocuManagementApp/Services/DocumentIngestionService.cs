@@ -33,10 +33,12 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
     private const string EventType = "document.ingested";
     private const int EventSchemaVersion = 1;
     private readonly AppDbContext _dbContext;
+    private readonly IDocumentBlobStore _blobStore;
 
-    public DocumentIngestionService(AppDbContext dbContext)
+    public DocumentIngestionService(AppDbContext dbContext, IDocumentBlobStore? blobStore = null)
     {
         _dbContext = dbContext;
+        _blobStore = blobStore ?? new DisabledDocumentBlobStore();
     }
 
     public async Task<DocumentIngestionResult> IngestAsync(
@@ -91,6 +93,16 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
             RequestedOutputFormat = requestedOutputFormat,
             ProcessingCompletedAtUtc = now
         }).ToArray();
+
+        if (_blobStore.IsEnabled)
+        {
+            for (var i = 0; i < documentRecords.Length; i++)
+            {
+                var record = documentRecords[i];
+                record.BlobName = await _blobStore.SaveAsync(record.Id, documents[i].Content, record.ContentType, cancellationToken);
+                record.FileContent = Array.Empty<byte>();
+            }
+        }
 
         var documentId = sourceDocument?.Id ?? documentRecords[0].Id;
         var eventId = Guid.NewGuid();

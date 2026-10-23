@@ -44,10 +44,10 @@ public sealed class EmbeddingOptions
     public string ApiKey { get; set; } = string.Empty;
     public string? ApiKeyHeaderName { get; set; }
     public bool IsConfigured =>
-        Provider is "FoundryLocal" or "Ollama" or "MicrosoftFoundry" &&
+        Provider is "FoundryLocal" or "Ollama" or "MicrosoftFoundry" or "OpenAI" &&
         Uri.TryCreate(Endpoint, UriKind.Absolute, out _) &&
         !string.IsNullOrWhiteSpace(ModelName) &&
-        (Provider != "MicrosoftFoundry" || !string.IsNullOrWhiteSpace(ApiKey));
+        (Provider is not ("MicrosoftFoundry" or "OpenAI") || !string.IsNullOrWhiteSpace(ApiKey));
 
     public string ResolvedApiKeyHeaderName => !string.IsNullOrWhiteSpace(ApiKeyHeaderName)
         ? ApiKeyHeaderName

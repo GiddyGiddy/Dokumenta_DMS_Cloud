@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "iX9Nl/5BtSU=",
+  "dgSpecHash": "BOrJhmI6K7E=",
   "success": true,
-  "projectFilePath": "C:\\angular_asp_core_web_api\\ExtractionService\\ExtractionService.csproj",
+  "projectFilePath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\ExtractionService\\ExtractionService.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\gideon.ayodele\\.nuget\\packages\\microsoft.extensions.configuration\\9.0.4\\microsoft.extensions.configuration.9.0.4.nupkg.sha512",
     "C:\\Users\\gideon.ayodele\\.nuget\\packages\\microsoft.extensions.configuration.abstractions\\9.0.4\\microsoft.extensions.configuration.abstractions.9.0.4.nupkg.sha512",

@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\angular_asp_core_web_api\\DocuManagementApp\\DocuManagementApp.csproj": {}
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\DocuManagementApp.csproj": {}
   },
   "projects": {
-    "C:\\angular_asp_core_web_api\\DocuManagementApp\\DocuManagementApp.csproj": {
+    "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\DocuManagementApp.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\angular_asp_core_web_api\\DocuManagementApp\\DocuManagementApp.csproj",
+        "projectUniqueName": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\DocuManagementApp.csproj",
         "projectName": "DocuManagementApp",
-        "projectPath": "C:\\angular_asp_core_web_api\\DocuManagementApp\\DocuManagementApp.csproj",
+        "projectPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\DocuManagementApp.csproj",
         "packagesPath": "C:\\Users\\gideon.ayodele\\.nuget\\packages\\",
-        "outputPath": "C:\\angular_asp_core_web_api\\DocuManagementApp\\obj\\",
+        "outputPath": "C:\\Dokumenta_DMS_Cloud\\Dokumenta_DMS_Cloud\\DocuManagementApp\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\gideon.ayodele\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -44,6 +44,14 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "dependencies": {
+            "Azure.Identity": {
+              "target": "Package",
+              "version": "[1.21.0, )"
+            },
+            "Azure.Storage.Blobs": {
+              "target": "Package",
+              "version": "[12.30.1, )"
+            },
             "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
               "version": "[9.0.14, )"

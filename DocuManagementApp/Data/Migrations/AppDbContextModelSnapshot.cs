@@ -28,6 +28,9 @@ namespace WebApplication1.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BlobName")
+                        .HasColumnType("text");
+
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -99,6 +102,9 @@ namespace WebApplication1.Data.Migrations
 
                     b.Property<int?>("BaseRevisionNumber")
                         .HasColumnType("integer");
+
+                    b.Property<string>("BlobName")
+                        .HasColumnType("text");
 
                     b.Property<string>("Comment")
                         .HasMaxLength(2000)

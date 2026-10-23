@@ -7,6 +7,7 @@ public sealed class DocumentRevision
   public int RevisionNumber { get; set; }
   public int? BaseRevisionNumber { get; set; }
   public byte[] FileContent { get; set; } = Array.Empty<byte>();
+  public string? BlobName { get; set; }
   public string ContentType { get; set; } = "application/octet-stream";
   public long SizeBytes { get; set; }
   public string EditedBy { get; set; } = "anonymous";
