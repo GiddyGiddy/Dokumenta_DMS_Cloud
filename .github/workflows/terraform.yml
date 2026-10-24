@@ -1,0 +1,71 @@
+﻿name: Terraform
+
+on:
+  pull_request:
+    paths: ["infra/terraform/**"]
+  push:
+    branches: [main]
+    paths: ["infra/terraform/**"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: terraform
+  cancel-in-progress: false
+
+env:
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_location: swedencentral
+  TF_VAR_static_web_app_location: centralus
+  TF_VAR_pg_admin_password: ${{ secrets.TF_PG_ADMIN_PASSWORD }}
+  TF_VAR_rabbit_password: ${{ secrets.TF_RABBIT_PASSWORD }}
+  TF_VAR_download_api_key: ${{ secrets.TF_DOWNLOAD_API_KEY }}
+  TF_VAR_artifact_api_key: ${{ secrets.TF_ARTIFACT_API_KEY }}
+  TF_VAR_search_api_key: ${{ secrets.TF_SEARCH_API_KEY }}
+  TF_VAR_gemini_key: ${{ secrets.TF_GEMINI_KEY }}
+  TF_VAR_openai_key: ${{ secrets.TF_OPENAI_KEY }}
+  TF_VAR_document_intelligence_key: ${{ secrets.TF_DOCUMENT_INTELLIGENCE_KEY }}
+
+defaults:
+  run:
+    working-directory: infra/terraform
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Init
+        run: terraform init -input=false
+      - name: Plan
+        run: terraform plan -input=false -lock-timeout=5m -out=tfplan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: infra/terraform/tfplan
+
+  apply:
+    if: github.event_name != 'pull_request'
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: infra/terraform
+      - name: Init
+        run: terraform init -input=false
+      - name: Apply
+        run: terraform apply -input=false -lock-timeout=5m tfplan

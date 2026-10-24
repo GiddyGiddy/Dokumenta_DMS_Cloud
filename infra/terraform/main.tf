@@ -6,6 +6,13 @@ terraform {
       version = "~> 4.10"
     }
   }
+  backend "azurerm" {
+    resource_group_name  = "rg-dokumenta"
+    storage_account_name = "sttfdokumenta84f1a"
+    container_name       = "tfstate"
+    key                  = "dokumenta.tfstate"
+    use_azuread_auth     = true
+  }
 }
 
 provider "azurerm" {
