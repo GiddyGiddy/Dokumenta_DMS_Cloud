@@ -4,3 +4,7 @@
 .terraform/
 *.tfstate*
 terraform.tfvars
+
+# .NET build output
+[Bb]in/
+[Oo]bj/

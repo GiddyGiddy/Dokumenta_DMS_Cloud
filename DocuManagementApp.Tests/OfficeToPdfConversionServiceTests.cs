@@ -12,7 +12,12 @@ public sealed class OfficeToPdfConversionServiceTests
     public OfficeToPdfConversionServiceTests()
     {
         _service = new OfficeToPdfConversionService(
-            new ConfigurationBuilder().Build(),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["LibreOffice:ContainerRuntimeExecutablePath"] = "podman.exe"
+                })
+                .Build(),
             _processRunner,
             NullLogger<OfficeToPdfConversionService>.Instance);
     }
