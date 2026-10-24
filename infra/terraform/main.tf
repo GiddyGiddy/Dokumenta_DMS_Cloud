@@ -343,6 +343,11 @@ resource "azurerm_container_app" "svc" {
     azurerm_postgresql_flexible_server_database.db,
     azurerm_container_app.rabbit,
   ]
+
+  # CI (deploy-backend.yml) owns the image tag after the first apply.
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
 }
 
 resource "azurerm_static_web_app" "web" {
