@@ -39,8 +39,8 @@ param documentIntelligenceKey string = ''
 @description('Google AI Studio API key (Gemini) used by ExtractionService.')
 @secure()
 param geminiKey string = ''
-@description('gemini-2.5-flash or gemini-2.5-flash-lite (cheaper).')
-param geminiModel string = 'gemini-2.5-flash'
+@description('A current Gemini model, e.g. gemini-3.8-flash (see ai.google.dev/gemini-api/docs/models).')
+param geminiModel string = 'gemini-3.8-flash'
 @description('OpenAI API key used by SearchService for embeddings.')
 @secure()
 param openAiKey string = ''
@@ -239,6 +239,7 @@ resource docmanager 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
           { name: 'BlobStorage__AccountUrl', value: storage.properties.primaryEndpoints.blob }
           { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
           { name: 'Cors__AllowedOrigins__0', value: 'https://${swa.properties.defaultHostname}' }
+          { name: 'Database__MigrateOnStartup', value: 'true' }
         ])
       }]
       scale: { minReplicas: 1, maxReplicas: 2 }
@@ -300,7 +301,7 @@ resource extraction 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
         resources: { cpu: json('0.5'), memory: '1Gi' }
         env: concat(rabbitEnv, [
           { name: 'ConnectionStrings__Extraction', secretRef: 'db' }
-          { name: 'ExtractionArtifactApi__ListenUrl', value: 'http://+:8080' }
+          { name: 'ExtractionArtifactApi__ListenUrl', value: 'http://0.0.0.0:8080' }
           { name: 'ExtractionArtifactApi__PublicBaseUrl', value: 'http://extraction' }
           { name: 'ExtractionArtifactApi__ApiKey', secretRef: 'artifact-key' }
           { name: 'DocumentContentApi__BaseUrl', value: 'http://docmanager/' }

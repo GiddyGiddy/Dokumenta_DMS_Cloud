@@ -101,6 +101,12 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 var app = builder.Build();
 app.UseForwardedHeaders();
 
+if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
+{
+  using var scope = app.Services.CreateScope();
+  scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -118,7 +124,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" })).AllowAnonymous();
 
 
 app.Run();

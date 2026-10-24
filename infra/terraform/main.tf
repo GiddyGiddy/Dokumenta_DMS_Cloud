@@ -11,6 +11,8 @@ terraform {
 provider "azurerm" {
   features {}
   subscription_id = var.subscription_id
+  # Storage data-plane calls use Entra ID because shared keys are disabled.
+  storage_use_azuread = true
 }
 
 data "azurerm_resource_group" "rg" {
@@ -67,6 +69,7 @@ locals {
         { name = "BlobStorage__AccountUrl", value = azurerm_storage_account.docs.primary_blob_endpoint, secret = null },
         { name = "AZURE_CLIENT_ID", value = azurerm_user_assigned_identity.apps.client_id, secret = null },
         { name = "Cors__AllowedOrigins__0", value = "https://${azurerm_static_web_app.web.default_host_name}", secret = null },
+        { name = "Database__MigrateOnStartup", value = "true", secret = null },
       ])
     }
     orchestrator = {
@@ -87,7 +90,7 @@ locals {
       })
       env = concat(local.rabbit_env, [
         { name = "ConnectionStrings__Extraction", value = null, secret = "db" },
-        { name = "ExtractionArtifactApi__ListenUrl", value = "http://+:8080", secret = null },
+        { name = "ExtractionArtifactApi__ListenUrl", value = "http://0.0.0.0:8080", secret = null },
         { name = "ExtractionArtifactApi__PublicBaseUrl", value = "http://extraction", secret = null },
         { name = "ExtractionArtifactApi__ApiKey", value = null, secret = "artifact-key" },
         { name = "DocumentContentApi__BaseUrl", value = "http://docmanager/", secret = null },

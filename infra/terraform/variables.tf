@@ -99,8 +99,8 @@ variable "gemini_key" {
 
 variable "gemini_model" {
   type        = string
-  default     = "gemini-2.5-flash"
-  description = "gemini-2.5-flash or gemini-2.5-flash-lite (cheaper)."
+  default     = "gemini-3.8-flash"
+  description = "A current Gemini model, e.g. gemini-3.8-flash (see ai.google.dev/gemini-api/docs/models)."
 }
 
 variable "openai_key" {

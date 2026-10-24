@@ -18,7 +18,7 @@ public sealed class FoundryModelOptions
 public sealed class GeminiModelOptions
 {
     public string Endpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/openai/";
-    public string ModelName { get; set; } = "gemini-2.5-flash";
+    public string ModelName { get; set; } = "gemini-3.8-flash";
     public string ApiKey { get; set; } = string.Empty;
 }
 
@@ -205,9 +205,15 @@ public sealed class FoundryDocumentAgent(
             var requestId = response.Headers.TryGetValues("x-request-id", out var requestIds)
                 ? requestIds.FirstOrDefault()
                 : null;
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (errorBody.Length > 300)
+            {
+                errorBody = errorBody[..300];
+            }
             throw new FoundryModelException(
                 $"{provider} chat completion failed with HTTP {(int)response.StatusCode}" +
-                (string.IsNullOrWhiteSpace(requestId) ? "." : $" (request ID {requestId})."));
+                (string.IsNullOrWhiteSpace(requestId) ? "." : $" (request ID {requestId}).") +
+                $" Response: {errorBody}");
         }
 
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);

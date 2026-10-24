@@ -1,0 +1,74 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "DocuManagementApp/**"
+      - "OrchestratorService/**"
+      - "ExtractionService/**"
+      - "SearchService/**"
+      - "Dockerfile.service"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: docmanager
+            project: DocuManagementApp
+          - app: orchestrator
+            project: OrchestratorService
+          - app: extraction
+            project: ExtractionService
+          - app: search
+            project: SearchService
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build image in ACR
+        run: |
+          az acr build -r "${{ vars.ACR_NAME }}" \
+            -f Dockerfile.service \
+            --build-arg PROJECT=${{ matrix.project }} \
+            -t "${{ matrix.app }}:${{ github.sha }}" \
+            .
+
+      - name: Update container app
+        run: |
+          az containerapp update \
+            -n "${{ matrix.app }}" \
+            -g "${{ vars.RESOURCE_GROUP }}" \
+            --image "${{ vars.ACR_NAME }}.azurecr.io/${{ matrix.app }}:${{ github.sha }}" \
+            --query "properties.latestRevisionName" -o tsv
+
+      - name: Check revision health
+        run: |
+          for i in $(seq 1 20); do
+            state=$(az containerapp revision list -n "${{ matrix.app }}" -g "${{ vars.RESOURCE_GROUP }}" \
+              --query "[?properties.active && contains(properties.template.containers[0].image, '${{ github.sha }}')].properties.healthState | [0]" -o tsv)
+            echo "health=$state"
+            if [ "$state" = "Healthy" ]; then exit 0; fi
+            if [ "$state" = "Unhealthy" ]; then exit 1; fi
+            sleep 15
+          done
+          echo "Timed out waiting for a healthy revision" && exit 1

@@ -11,7 +11,7 @@ param(
   [string]$ImageTag = '1',
   [string]$GeminiKey = $env:GEMINI_API_KEY,
   [string]$OpenAiKey = $env:OPENAI_API_KEY,
-  [string]$GeminiModel = 'gemini-2.5-flash',
+  [string]$GeminiModel = 'gemini-3.8-flash',
   [string]$DocumentIntelligenceEndpoint = '',
   [string]$DocumentIntelligenceKey = '',
   [string]$SecretsFile = (Join-Path $PSScriptRoot '..\.azure-secrets.json')
