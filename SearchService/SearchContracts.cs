@@ -9,7 +9,7 @@ public sealed record SearchIndexCommand(
     Guid TaskId,
     string DocumentKind,
     string ArtifactReference,
-    string? TenantId = null)
+    string TenantId)
 {
     public static SearchIndexCommand Parse(ReadOnlyMemory<byte> body, string? messageId)
     {
@@ -37,6 +37,7 @@ public sealed record SearchIndexCommand(
             throw new InvalidDataException("The search-index task is missing a valid artifact URL.");
         }
 
+        var tenantId = TenantIds.Require(ReadString(root, "tenantId"));
         return new SearchIndexCommand(
             ReadGuid(root, "eventId") ?? ParseGuid(messageId, "MessageId"),
             RequiredGuid(root, "correlationId"),
@@ -44,7 +45,7 @@ public sealed record SearchIndexCommand(
             RequiredGuid(root, "taskId"),
             ReadString(root, "documentKind") ?? "Unknown",
             artifactUri.ToString(),
-            ReadString(root, "tenantId"));
+            tenantId);
     }
 
     private static Guid RequiredGuid(JsonElement element, string name)

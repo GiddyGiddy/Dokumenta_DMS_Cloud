@@ -11,7 +11,6 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 builder.Services.AddOptions<SearchOptions>()
     .Bind(builder.Configuration.GetSection("Search"))
-    .Validate(options => !string.IsNullOrWhiteSpace(options.TenantId), "Search:TenantId must be configured.")
     .Validate(options => !string.IsNullOrWhiteSpace(options.ApiKey), "Search:ApiKey must be supplied through user-secrets or environment variables.")
     .Validate(options => options.EmbeddingDimensions is > 0 and <= 16000, "Search:EmbeddingDimensions must be between 1 and 16000.")
     .Validate(options => options.Embeddings.Provider is "FoundryLocal" or "Ollama" or "MicrosoftFoundry" or "OpenAI", "Search:Embeddings:Provider must be FoundryLocal, Ollama, MicrosoftFoundry, or OpenAI.")

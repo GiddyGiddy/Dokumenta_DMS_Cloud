@@ -34,6 +34,18 @@ public sealed class TenantKeyTests
     }
 
     [Fact]
+    public void PersonalSubjectFallbackIsStableAndProducesValidTenantKey()
+    {
+        var principal = Principal(("tid", TenantKey.PersonalAccountTenantId), ("sub", "app-scoped-subject"));
+
+        var firstKey = TenantKey.FromPrincipal(principal);
+        var secondKey = TenantKey.FromPrincipal(principal);
+
+        Assert.Equal(firstKey, secondKey);
+        Assert.True(TenantKey.IsValidKey(firstKey));
+    }
+
+    [Fact]
     public void MissingOrInvalidTenantClaimYieldsNoKey()
     {
         Assert.Null(TenantKey.FromPrincipal(Principal(("oid", Guid.NewGuid().ToString()))));

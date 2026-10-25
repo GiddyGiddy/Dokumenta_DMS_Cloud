@@ -22,6 +22,7 @@ public sealed record DocumentIngestionResult(
 public interface IDocumentIngestionService
 {
     Task<DocumentIngestionResult> IngestAsync(
+        string tenantId,
         Guid? sourceDocumentId,
         IReadOnlyList<IngestionDocumentInput> documents,
         DocumentOutputFormat requestedOutputFormat,
@@ -34,24 +35,23 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
     private const int EventSchemaVersion = 1;
     private readonly AppDbContext _dbContext;
     private readonly IDocumentBlobStore _blobStore;
-    private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? _httpContextAccessor;
-
-    public DocumentIngestionService(
-        AppDbContext dbContext,
-        IDocumentBlobStore? blobStore = null,
-        Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor = null)
+    public DocumentIngestionService(AppDbContext dbContext, IDocumentBlobStore? blobStore = null)
     {
         _dbContext = dbContext;
         _blobStore = blobStore ?? new DisabledDocumentBlobStore();
-        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<DocumentIngestionResult> IngestAsync(
+        string tenantId,
         Guid? sourceDocumentId,
         IReadOnlyList<IngestionDocumentInput> documents,
         DocumentOutputFormat requestedOutputFormat,
         CancellationToken cancellationToken)
     {
+        if (!TenantKey.IsValidKey(tenantId))
+        {
+            throw new ArgumentException("A valid tenant key is required.", nameof(tenantId));
+        }
         ArgumentNullException.ThrowIfNull(documents);
         if (documents.Count == 0)
         {
@@ -70,7 +70,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
         if (sourceDocumentId.HasValue)
         {
             sourceDocument = await _dbContext.Documents
-                .SingleOrDefaultAsync(document => document.Id == sourceDocumentId.Value, cancellationToken);
+                .SingleOrDefaultAsync(document => document.Id == sourceDocumentId.Value && document.TenantId == tenantId, cancellationToken);
             if (sourceDocument is null)
             {
                 throw new InvalidOperationException($"Source document '{sourceDocumentId}' was not found.");
@@ -86,6 +86,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
 
         var documentRecords = documents.Select(input => new DocumentRecord
         {
+            TenantId = tenantId,
             CorrelationId = correlationId,
             OriginalFileName = Path.GetFileName(input.OriginalFileName),
             ContentType = string.IsNullOrWhiteSpace(input.ContentType)
@@ -117,7 +118,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
             eventId,
             eventType = EventType,
             schemaVersion = EventSchemaVersion,
-            tenantId = TenantKey.FromPrincipal(_httpContextAccessor?.HttpContext?.User),
+            tenantId,
             documentId,
             processingStatus = DocumentProcessingStatus.Completed.ToString(),
             requestedOutputFormat = requestedOutputFormat.ToString(),

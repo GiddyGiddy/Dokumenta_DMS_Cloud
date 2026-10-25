@@ -11,6 +11,7 @@ public sealed record ExtractionJob(
     Guid CorrelationId,
     Guid DocumentId,
     string DocumentKind,
+    string? TenantId,
     string? InputReference,
     int AttemptCount,
     Guid LockToken);
@@ -68,6 +69,7 @@ public sealed class ExtractionDatabase(
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS lease_until_utc timestamptz NULL;
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS lock_token uuid NULL;
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS classified_kind text NULL;
+            ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS tenant_id text NULL;
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS classification_confidence double precision NULL;
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS classification_reason text NULL;
             CREATE INDEX IF NOT EXISTS ix_extraction_jobs_status_created
@@ -117,10 +119,10 @@ public sealed class ExtractionDatabase(
         await using (var jobCommand = new NpgsqlCommand("""
             INSERT INTO extraction_jobs
                 (task_id, request_event_id, correlation_id, document_id, document_kind,
-                 input_reference, request_payload, status, created_at_utc, updated_at_utc)
+                 tenant_id, input_reference, request_payload, status, created_at_utc, updated_at_utc)
             VALUES
                 (@task_id, @event_id, @correlation_id, @document_id, @document_kind,
-                 @input_reference, @payload, 'Queued', @now, @now)
+                 @tenant_id, @input_reference, @payload, 'Queued', @now, @now)
             ON CONFLICT (task_id) DO NOTHING;
             """, connection, transaction))
         {
@@ -129,6 +131,7 @@ public sealed class ExtractionDatabase(
             jobCommand.Parameters.AddWithValue("correlation_id", request.CorrelationId);
             jobCommand.Parameters.AddWithValue("document_id", request.DocumentId);
             jobCommand.Parameters.AddWithValue("document_kind", request.DocumentKind);
+            jobCommand.Parameters.AddWithValue("tenant_id", request.TenantId);
             jobCommand.Parameters.AddWithValue("input_reference", (object?)request.InputReference ?? DBNull.Value);
             jobCommand.Parameters.AddWithValue("payload", NpgsqlDbType.Jsonb, request.RawPayload);
             jobCommand.Parameters.AddWithValue("now", now);
@@ -168,7 +171,7 @@ public sealed class ExtractionDatabase(
             FROM candidate
             WHERE job.task_id = candidate.task_id
             RETURNING job.task_id, job.request_event_id, job.correlation_id, job.document_id,
-                      job.document_kind, job.input_reference, job.attempt_count, job.lock_token;
+                      job.document_kind, job.tenant_id, job.input_reference, job.attempt_count, job.lock_token;
             """, connection, transaction);
         command.Parameters.AddWithValue("now", now);
         command.Parameters.AddWithValue("include_layout_ready", includeLayoutReady);
@@ -185,7 +188,8 @@ public sealed class ExtractionDatabase(
         var job = new ExtractionJob(
             reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2), reader.GetGuid(3),
             reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5),
-            reader.GetInt32(6), reader.GetGuid(7));
+            reader.IsDBNull(6) ? null : reader.GetString(6),
+            reader.GetInt32(7), reader.GetGuid(8));
         await reader.CloseAsync();
         await transaction.CommitAsync(cancellationToken);
         return job;

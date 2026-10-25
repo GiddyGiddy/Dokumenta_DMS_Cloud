@@ -1,6 +1,8 @@
 using DocuManagementApp.Controllers;
 using DocuManagementApp.Models;
 using DocuManagementApp.Services;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -23,6 +25,15 @@ public sealed class FileUploadControllerTests
             _ingestion,
             _conversion,
             _pdfa);
+      _controller.ControllerContext = new ControllerContext
+      {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [new Claim("tid", Guid.NewGuid().ToString()), new Claim("oid", Guid.NewGuid().ToString())],
+                    "test"))
+            }
+      };
     }
 
     [Fact]
@@ -290,12 +301,12 @@ public sealed class FileUploadControllerTests
         public bool ContainsDocument(Guid id) => _documents.ContainsKey(id);
         public Guid GetCorrelationId(Guid id) => _documents[id].CorrelationId;
 
-        public Task<IReadOnlyList<DocumentListItem>> GetDocumentsAsync(CancellationToken cancellationToken)
+        public Task<IReadOnlyList<DocumentListItem>> GetDocumentsAsync(string tenantId, CancellationToken cancellationToken)
         {
             return Task.FromResult<IReadOnlyList<DocumentListItem>>(Documents.ToArray());
         }
 
-        public Task<DocumentDownloadResult?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken)
+        public Task<DocumentDownloadResult?> GetDocumentByIdAsync(Guid id, string tenantId, CancellationToken cancellationToken)
         {
             _documents.TryGetValue(id, out var document);
             return Task.FromResult(document);
@@ -308,6 +319,7 @@ public sealed class FileUploadControllerTests
         public List<OutboxMessage> OutboxMessages { get; } = [];
 
         public Task<DocumentIngestionResult> IngestAsync(
+            string tenantId,
             Guid? sourceDocumentId,
             IReadOnlyList<IngestionDocumentInput> documents,
             DocumentOutputFormat requestedOutputFormat,

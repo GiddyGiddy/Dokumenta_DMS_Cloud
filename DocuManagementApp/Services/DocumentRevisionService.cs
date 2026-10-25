@@ -26,10 +26,10 @@ public sealed class RevisionResult
 
 public interface IDocumentRevisionService
 {
-  Task<IReadOnlyList<RevisionInfo>?> ListAsync(Guid documentId, CancellationToken ct = default);
-  Task<DocumentRevision?> GetAsync(Guid documentId, int revisionNumber, CancellationToken ct = default);
-  Task<RevisionResult> CreateAsync(Guid documentId, byte[] content, string? contentType, int expectedRevision, string editedBy, string? comment, CancellationToken ct = default);
-  Task<RevisionResult> RestoreAsync(Guid documentId, int revisionNumber, int expectedRevision, string editedBy, CancellationToken ct = default);
+  Task<IReadOnlyList<RevisionInfo>?> ListAsync(Guid documentId, string tenantId, CancellationToken ct = default);
+  Task<DocumentRevision?> GetAsync(Guid documentId, int revisionNumber, string tenantId, CancellationToken ct = default);
+  Task<RevisionResult> CreateAsync(Guid documentId, string tenantId, byte[] content, string? contentType, int expectedRevision, string editedBy, string? comment, CancellationToken ct = default);
+  Task<RevisionResult> RestoreAsync(Guid documentId, int revisionNumber, string tenantId, int expectedRevision, string editedBy, CancellationToken ct = default);
 }
 
 public sealed class DocumentRevisionService : IDocumentRevisionService
@@ -51,13 +51,14 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
     }
   }
 
-  public async Task<IReadOnlyList<RevisionInfo>?> ListAsync(Guid documentId, CancellationToken ct = default)
+  public async Task<IReadOnlyList<RevisionInfo>?> ListAsync(Guid documentId, string tenantId, CancellationToken ct = default)
   {
-    var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, ct);
+    var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId && d.TenantId == tenantId, ct);
     if (doc is null) return null;
 
     var list = await _db.DocumentRevisions.AsNoTracking()
-      .Where(r => r.DocumentId == documentId)
+      .Where(r => r.DocumentId == documentId &&
+        _db.Documents.Any(d => d.Id == r.DocumentId && d.TenantId == tenantId))
       .Select(r => new RevisionInfo
       {
         RevisionNumber = r.RevisionNumber,
@@ -85,10 +86,11 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
     return list.OrderBy(r => r.RevisionNumber).ToList();
   }
 
-  public async Task<DocumentRevision?> GetAsync(Guid documentId, int revisionNumber, CancellationToken ct = default)
+  public async Task<DocumentRevision?> GetAsync(Guid documentId, int revisionNumber, string tenantId, CancellationToken ct = default)
   {
     var rev = await _db.DocumentRevisions.AsNoTracking()
-      .FirstOrDefaultAsync(r => r.DocumentId == documentId && r.RevisionNumber == revisionNumber, ct);
+      .FirstOrDefaultAsync(r => r.DocumentId == documentId && r.RevisionNumber == revisionNumber &&
+        _db.Documents.Any(d => d.Id == r.DocumentId && d.TenantId == tenantId), ct);
     if (rev is not null)
     {
       await HydrateAsync(rev, ct);
@@ -97,7 +99,7 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
 
     // Unedited document: revision 1 is the original upload.
     if (revisionNumber != 1) return null;
-    var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, ct);
+    var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId && d.TenantId == tenantId, ct);
     if (doc is null || doc.CurrentRevisionNumber != 0) return null;
 
     var original = new DocumentRevision
@@ -115,14 +117,14 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
     return original;
   }
 
-  public async Task<RevisionResult> CreateAsync(Guid documentId, byte[] content, string? contentType, int expectedRevision, string editedBy, string? comment, CancellationToken ct = default)
+  public async Task<RevisionResult> CreateAsync(Guid documentId, string tenantId, byte[] content, string? contentType, int expectedRevision, string editedBy, string? comment, CancellationToken ct = default)
   {
     if (content is null || content.Length == 0)
     {
       return new RevisionResult { Outcome = RevisionOutcome.Invalid };
     }
 
-    var doc = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
+    var doc = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId && d.TenantId == tenantId, ct);
     if (doc is null) return new RevisionResult { Outcome = RevisionOutcome.NotFound };
 
     var current = Math.Max(doc.CurrentRevisionNumber, 1);
@@ -205,12 +207,12 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
     };
   }
 
-  public async Task<RevisionResult> RestoreAsync(Guid documentId, int revisionNumber, int expectedRevision, string editedBy, CancellationToken ct = default)
+  public async Task<RevisionResult> RestoreAsync(Guid documentId, int revisionNumber, string tenantId, int expectedRevision, string editedBy, CancellationToken ct = default)
   {
-    var source = await GetAsync(documentId, revisionNumber, ct);
+    var source = await GetAsync(documentId, revisionNumber, tenantId, ct);
     if (source is null) return new RevisionResult { Outcome = RevisionOutcome.NotFound };
 
-    return await CreateAsync(documentId, source.FileContent, source.ContentType, expectedRevision, editedBy,
+    return await CreateAsync(documentId, tenantId, source.FileContent, source.ContentType, expectedRevision, editedBy,
       $"Restored from revision {revisionNumber}", ct);
   }
 }

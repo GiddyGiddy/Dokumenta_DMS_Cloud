@@ -27,7 +27,8 @@ public sealed class ExtractionLayoutPipeline(
         var settings = options.Value;
         try
         {
-            var content = await contentClient.GetAsync(job.DocumentId, cancellationToken);
+            var tenantId = job.TenantId ?? throw new InvalidDataException("The extraction job has no tenant ownership.");
+            var content = await contentClient.GetAsync(job.DocumentId, tenantId, cancellationToken);
             var layout = await layoutClient.AnalyzeAsync(content, cancellationToken);
             if (!settings.EnableModelExtraction)
             {

@@ -20,6 +20,7 @@ public sealed class AppDbContext : DbContext
       entity.ToTable("documents");
       entity.HasKey(x => x.Id);
       entity.Property(x => x.CorrelationId).IsRequired();
+      entity.Property(x => x.TenantId).HasMaxLength(96);
       entity.Property(x => x.OriginalFileName).HasMaxLength(512).IsRequired();
       entity.Property(x => x.ContentType).HasMaxLength(256).IsRequired();
       entity.Property(x => x.FileContent).IsRequired();
@@ -41,6 +42,7 @@ public sealed class AppDbContext : DbContext
       entity.Property(x => x.CurrentRevisionNumber).HasDefaultValue(0).IsRequired();
       entity.HasIndex(x => x.UploadedAtUtc);
       entity.HasIndex(x => x.CorrelationId);
+      entity.HasIndex(x => x.TenantId);
       entity.HasIndex(x => new { x.ProcessingStatus, x.UploadedAtUtc });
     });
 

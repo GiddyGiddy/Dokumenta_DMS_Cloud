@@ -26,15 +26,18 @@ public sealed record DocumentLayoutResult(string Markdown, string RawJson);
 
 public interface IDocumentContentClient
 {
-    Task<DocumentContent> GetAsync(Guid documentId, CancellationToken cancellationToken);
+    Task<DocumentContent> GetAsync(Guid documentId, string tenantId, CancellationToken cancellationToken);
 }
 
 public sealed class DocumentContentApiClient(HttpClient httpClient) : IDocumentContentClient
 {
-    public async Task<DocumentContent> GetAsync(Guid documentId, CancellationToken cancellationToken)
+    public async Task<DocumentContent> GetAsync(Guid documentId, string tenantId, CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         var relativeUri = $"api/fileupload/service-download/{documentId:D}";
-        using var response = await httpClient.GetAsync(relativeUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get, relativeUri);
+        request.Headers.TryAddWithoutValidation("X-Tenant-Id", tenantId);
+        using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             throw new FileNotFoundException($"Document '{documentId}' was not found by the content API.");

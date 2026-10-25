@@ -38,8 +38,8 @@ public sealed class DocumentDownloadResult
 
 public interface IDocumentStorageService
 {
-  Task<IReadOnlyList<DocumentListItem>> GetDocumentsAsync(CancellationToken cancellationToken);
-  Task<DocumentDownloadResult?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken);
+  Task<IReadOnlyList<DocumentListItem>> GetDocumentsAsync(string tenantId, CancellationToken cancellationToken);
+  Task<DocumentDownloadResult?> GetDocumentByIdAsync(Guid id, string tenantId, CancellationToken cancellationToken);
 }
 
 public sealed class DocumentStorageService : IDocumentStorageService
@@ -75,9 +75,10 @@ public sealed class DocumentStorageService : IDocumentStorageService
     };
   }
 
-  public async Task<IReadOnlyList<DocumentListItem>> GetDocumentsAsync(CancellationToken cancellationToken)
+  public async Task<IReadOnlyList<DocumentListItem>> GetDocumentsAsync(string tenantId, CancellationToken cancellationToken)
   {
     return await _dbContext.Documents
+      .Where(x => x.TenantId == tenantId)
       .OrderByDescending(x => x.UploadedAtUtc)
       .Select(x => new DocumentListItem
       {
@@ -95,11 +96,11 @@ public sealed class DocumentStorageService : IDocumentStorageService
       .ToListAsync(cancellationToken);
   }
 
-  public async Task<DocumentDownloadResult?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken)
+  public async Task<DocumentDownloadResult?> GetDocumentByIdAsync(Guid id, string tenantId, CancellationToken cancellationToken)
   {
     var row = await _dbContext.Documents
       .AsNoTracking()
-      .Where(x => x.Id == id)
+      .Where(x => x.Id == id && x.TenantId == tenantId)
       .Select(x => new { x.Id, x.CorrelationId, x.OriginalFileName, x.ContentType, x.FileContent, x.BlobName })
       .SingleOrDefaultAsync(cancellationToken);
     if (row is null) return null;

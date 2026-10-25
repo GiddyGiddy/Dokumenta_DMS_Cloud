@@ -2,7 +2,6 @@ namespace SearchService;
 
 public sealed class SearchOptions
 {
-    public string TenantId { get; set; } = "local-development";
     public string ApiKey { get; set; } = string.Empty;
     public string SourceDocumentBaseUrl { get; set; } = "http://localhost:5176/";
     public int EmbeddingDimensions { get; set; } = 1536;

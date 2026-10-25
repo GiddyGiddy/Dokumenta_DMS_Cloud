@@ -1,4 +1,7 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace DocuManagementApp.Services;
 
@@ -25,11 +28,22 @@ public static class TenantKey
             return "tenant:" + tenantGuid.ToString("D");
         }
 
-        var userId = FirstClaim(principal, "oid", "http://schemas.microsoft.com/identity/claims/objectidentifier", "sub");
-        return Guid.TryParse(userId, out var userGuid)
-            ? "personal:" + userGuid.ToString("D")
-            : string.IsNullOrWhiteSpace(userId) ? null : "personal:" + userId;
+        var userId = FirstClaim(principal, "oid", "http://schemas.microsoft.com/identity/claims/objectidentifier");
+        if (Guid.TryParse(userId, out var userGuid))
+        {
+            return "personal:" + userGuid.ToString("D");
+        }
+
+        var subject = FirstClaim(principal, "sub");
+        return string.IsNullOrWhiteSpace(subject)
+            ? null
+            : "personal:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(subject))).ToLowerInvariant();
     }
+
+    public static bool IsValidKey(string? value) =>
+        value is not null &&
+        (Regex.IsMatch(value, @"^tenant:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$") ||
+         Regex.IsMatch(value, @"^personal:(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-f]{64})$"));
 
     private static string? FirstClaim(ClaimsPrincipal principal, params string[] types)
     {

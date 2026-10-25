@@ -80,6 +80,10 @@ namespace WebApplication1.Data.Migrations
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
                     b.Property<DateTimeOffset>("UploadedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -90,6 +94,8 @@ namespace WebApplication1.Data.Migrations
                     b.HasIndex("UploadedAtUtc");
 
                     b.HasIndex("ProcessingStatus", "UploadedAtUtc");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("documents", (string)null);
                 });

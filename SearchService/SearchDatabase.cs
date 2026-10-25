@@ -110,12 +110,6 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public string ResolveIndexTenant(SearchIndexCommand indexCommand)
-    {
-        // Events created before tenant propagation fall back to the configured default tenant.
-        return string.IsNullOrWhiteSpace(indexCommand.TenantId) ? options.TenantId : TenantIds.Require(indexCommand.TenantId);
-    }
-
     public async Task<bool> IndexAsync(
         SearchIndexCommand indexCommand,
         ExtractionArtifactResponse artifact,
@@ -130,7 +124,7 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
             throw new InvalidDataException("Search chunks and embedding vectors are missing or have mismatched dimensions.");
         }
 
-        var tenantId = ResolveIndexTenant(indexCommand);
+        var tenantId = TenantIds.Require(indexCommand.TenantId);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using (var inbox = new NpgsqlCommand("""

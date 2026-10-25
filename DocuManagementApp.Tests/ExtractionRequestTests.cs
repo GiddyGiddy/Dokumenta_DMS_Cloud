@@ -21,6 +21,7 @@ public sealed class ExtractionRequestTests
               "correlationId": "{{correlationId:D}}",
               "documentId": "{{documentId:D}}",
               "taskId": "{{taskId:D}}",
+              "tenantId": "tenant:{{Guid.NewGuid():D}}",
               "taskType": "extraction",
               "documentKind": "Pdf",
               "inputReference": null
@@ -33,6 +34,7 @@ public sealed class ExtractionRequestTests
         Assert.Equal(correlationId, request.CorrelationId);
         Assert.Equal(documentId, request.DocumentId);
         Assert.Equal(taskId, request.TaskId);
+        Assert.StartsWith("tenant:", request.TenantId);
         Assert.Equal("Pdf", request.DocumentKind);
         Assert.Null(request.InputReference);
         Assert.Contains("document.task.requested", request.RawPayload);
@@ -57,9 +59,28 @@ public sealed class ExtractionRequestTests
     }
 
     [Fact]
+    public void RejectsExtractionTaskWithoutTenantOwnership()
+    {
+        var payload = $$"""
+            {
+              "eventId": "{{Guid.NewGuid():D}}",
+              "eventType": "document.task.requested",
+              "schemaVersion": 1,
+              "correlationId": "{{Guid.NewGuid():D}}",
+              "documentId": "{{Guid.NewGuid():D}}",
+              "taskId": "{{Guid.NewGuid():D}}",
+              "taskType": "extraction"
+            }
+            """;
+
+        Assert.Throws<InvalidDataException>(() => ExtractionRequest.Parse(Encoding.UTF8.GetBytes(payload), null));
+    }
+
+    [Fact]
     public async Task ContentClientDownloadsDocumentById()
     {
         var documentId = Guid.NewGuid();
+        var tenantId = $"tenant:{Guid.NewGuid():D}";
         HttpRequestMessage? capturedRequest = null;
         var handler = new StubHttpMessageHandler((request, _) =>
         {
@@ -74,9 +95,10 @@ public sealed class ExtractionRequestTests
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5176/") };
         var client = new DocumentContentApiClient(httpClient);
 
-        var document = await client.GetAsync(documentId, CancellationToken.None);
+        var document = await client.GetAsync(documentId, tenantId, CancellationToken.None);
 
         Assert.Equal($"api/fileupload/service-download/{documentId:D}", capturedRequest?.RequestUri?.PathAndQuery.TrimStart('/'));
+        Assert.Equal(tenantId, capturedRequest?.Headers.GetValues("X-Tenant-Id").Single());
         Assert.Equal("application/pdf", document.ContentType);
         Assert.Equal(new byte[] { 1, 2, 3 }, document.Bytes);
     }

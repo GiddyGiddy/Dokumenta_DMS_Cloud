@@ -29,14 +29,26 @@ public sealed class DocumentRevisionsController : ControllerBase
   [HttpGet]
   public async Task<IActionResult> List(Guid documentId, CancellationToken ct)
   {
-    var list = await _revisions.ListAsync(documentId, ct);
+    var tenantId = TenantKey.FromPrincipal(User);
+    if (tenantId is null || !TenantKey.IsValidKey(tenantId))
+    {
+      return StatusCode(StatusCodes.Status403Forbidden, new { message = "The access token does not carry a usable tenant identity." });
+    }
+
+    var list = await _revisions.ListAsync(documentId, tenantId, ct);
     return list is null ? NotFound() : Ok(list);
   }
 
   [HttpGet("{revisionNumber:int}/content")]
   public async Task<IActionResult> Content(Guid documentId, int revisionNumber, CancellationToken ct)
   {
-    var rev = await _revisions.GetAsync(documentId, revisionNumber, ct);
+    var tenantId = TenantKey.FromPrincipal(User);
+    if (tenantId is null || !TenantKey.IsValidKey(tenantId))
+    {
+      return StatusCode(StatusCodes.Status403Forbidden, new { message = "The access token does not carry a usable tenant identity." });
+    }
+
+    var rev = await _revisions.GetAsync(documentId, revisionNumber, tenantId, ct);
     return rev is null ? NotFound() : File(rev.FileContent, rev.ContentType);
   }
 
@@ -45,6 +57,12 @@ public sealed class DocumentRevisionsController : ControllerBase
   [RequestSizeLimit(30 * 1024 * 1024)]
   public async Task<IActionResult> Create(Guid documentId, [FromBody] CreateRevisionRequest request, CancellationToken ct)
   {
+    var tenantId = TenantKey.FromPrincipal(User);
+    if (tenantId is null || !TenantKey.IsValidKey(tenantId))
+    {
+      return StatusCode(StatusCodes.Status403Forbidden, new { message = "The access token does not carry a usable tenant identity." });
+    }
+
     byte[] content;
     try
     {
@@ -55,7 +73,7 @@ public sealed class DocumentRevisionsController : ControllerBase
       return BadRequest("contentBase64 is not valid base64.");
     }
 
-    var result = await _revisions.CreateAsync(documentId, content, request.ContentType,
+    var result = await _revisions.CreateAsync(documentId, tenantId, content, request.ContentType,
       request.ExpectedRevision, Editor(), request.Comment, ct);
     return Map(result);
   }
@@ -64,7 +82,13 @@ public sealed class DocumentRevisionsController : ControllerBase
   [Authorize(Policy = "DmsReview")]
   public async Task<IActionResult> Restore(Guid documentId, int revisionNumber, [FromBody] RestoreRevisionRequest request, CancellationToken ct)
   {
-    var result = await _revisions.RestoreAsync(documentId, revisionNumber, request.ExpectedRevision, Editor(), ct);
+    var tenantId = TenantKey.FromPrincipal(User);
+    if (tenantId is null || !TenantKey.IsValidKey(tenantId))
+    {
+      return StatusCode(StatusCodes.Status403Forbidden, new { message = "The access token does not carry a usable tenant identity." });
+    }
+
+    var result = await _revisions.RestoreAsync(documentId, revisionNumber, tenantId, request.ExpectedRevision, Editor(), ct);
     return Map(result);
   }
 

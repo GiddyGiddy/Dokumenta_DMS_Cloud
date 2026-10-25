@@ -4,6 +4,7 @@ public sealed class DocumentRecord
 {
   public Guid Id { get; set; } = Guid.NewGuid();
   public Guid CorrelationId { get; set; } = Guid.NewGuid();
+  public string? TenantId { get; set; }
   public string OriginalFileName { get; set; } = string.Empty;
   public string ContentType { get; set; } = "application/octet-stream";
   public byte[] FileContent { get; set; } = Array.Empty<byte>();

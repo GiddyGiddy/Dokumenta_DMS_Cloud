@@ -79,7 +79,7 @@ public sealed class ExtractionLayoutPipelineTests
     {
         return new ExtractionJob(
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
-            kind, null, attemptCount, Guid.NewGuid());
+            kind, $"tenant:{Guid.NewGuid():D}", null, attemptCount, Guid.NewGuid());
     }
 
     private sealed class FakeClassifier(DocumentClassification result) : IDocumentClassifierAgent
@@ -150,7 +150,7 @@ public sealed class ExtractionLayoutPipelineTests
 
     private sealed class FakeContentClient : IDocumentContentClient
     {
-        public Task<DocumentContent> GetAsync(Guid documentId, CancellationToken cancellationToken)
+        public Task<DocumentContent> GetAsync(Guid documentId, string tenantId, CancellationToken cancellationToken)
         {
             return Task.FromResult(new DocumentContent([1, 2, 3], "application/pdf"));
         }

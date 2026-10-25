@@ -45,6 +45,12 @@ namespace DocuManagementApp.Controllers
     [RequestSizeLimit(30 * 1024 * 1024)]
     public async Task<IActionResult> UploadFile([FromBody] UploadFileRequest? request, CancellationToken cancellationToken)
     {
+      var tenantId = TenantKey.FromPrincipal(User);
+      if (tenantId is null || !TenantKey.IsValidKey(tenantId))
+      {
+        return StatusCode(StatusCodes.Status403Forbidden, new { message = "The access token does not carry a usable tenant identity." });
+      }
+
       _logger.LogInformation("Upload request received at {Time}.", DateTime.Now);
 
       if (request is null || string.IsNullOrWhiteSpace(request.FileName) || string.IsNullOrWhiteSpace(request.ContentBase64))
@@ -129,6 +135,7 @@ namespace DocuManagementApp.Controllers
         }
 
         var ingestion = await _documentIngestionService.IngestAsync(
+          tenantId,
           null,
           documentsToIngest,
           requestedFormat,
@@ -173,7 +180,13 @@ namespace DocuManagementApp.Controllers
     [HttpGet("files")]
     public async Task<IActionResult> GetUploadedFiles(CancellationToken cancellationToken)
     {
-      var files = await _documentStorageService.GetDocumentsAsync(cancellationToken);
+      var tenantId = TenantKey.FromPrincipal(User);
+      if (tenantId is null || !TenantKey.IsValidKey(tenantId))
+      {
+        return StatusCode(StatusCodes.Status403Forbidden, new { message = "The access token does not carry a usable tenant identity." });
+      }
+
+      var files = await _documentStorageService.GetDocumentsAsync(tenantId, cancellationToken);
       return Ok(files);
     }
 
@@ -194,13 +207,30 @@ namespace DocuManagementApp.Controllers
         return Unauthorized();
       }
 
-      return await DownloadFile(id, cancellationToken);
+      var tenantId = Request.Headers["X-Tenant-Id"].ToString();
+      if (!TenantKey.IsValidKey(tenantId))
+      {
+        return BadRequest(new { message = "A valid X-Tenant-Id header is required." });
+      }
+
+      return await DownloadForTenant(id, tenantId, cancellationToken);
     }
 
     [HttpGet("download/{id:guid}")]
     public async Task<IActionResult> DownloadFile([FromRoute] Guid id, CancellationToken cancellationToken)
     {
-      var document = await _documentStorageService.GetDocumentByIdAsync(id, cancellationToken);
+      var tenantId = TenantKey.FromPrincipal(User);
+      if (tenantId is null || !TenantKey.IsValidKey(tenantId))
+      {
+        return StatusCode(StatusCodes.Status403Forbidden, new { message = "The access token does not carry a usable tenant identity." });
+      }
+
+      return await DownloadForTenant(id, tenantId, cancellationToken);
+    }
+
+    private async Task<IActionResult> DownloadForTenant(Guid id, string tenantId, CancellationToken cancellationToken)
+    {
+      var document = await _documentStorageService.GetDocumentByIdAsync(id, tenantId, cancellationToken);
       if (document is null)
       {
         return NotFound(new { message = "File not found." });
@@ -219,7 +249,13 @@ namespace DocuManagementApp.Controllers
     [HttpPost("{id:guid}/convert-to-pdf")]
     public async Task<IActionResult> ConvertToPdf([FromRoute] Guid id, [FromQuery] bool toPdfA, CancellationToken cancellationToken)
     {
-      var document = await _documentStorageService.GetDocumentByIdAsync(id, cancellationToken);
+      var tenantId = TenantKey.FromPrincipal(User);
+      if (tenantId is null || !TenantKey.IsValidKey(tenantId))
+      {
+        return StatusCode(StatusCodes.Status403Forbidden, new { message = "The access token does not carry a usable tenant identity." });
+      }
+
+      var document = await _documentStorageService.GetDocumentByIdAsync(id, tenantId, cancellationToken);
       if (document is null)
       {
         return NotFound(new { message = "File not found." });
@@ -279,6 +315,7 @@ namespace DocuManagementApp.Controllers
 
         var requestedFormat = toPdfA ? DocumentOutputFormat.PdfA : DocumentOutputFormat.Pdf;
         var ingestion = await _documentIngestionService.IngestAsync(
+          tenantId,
           id,
           [new IngestionDocumentInput(convertedFileName, pdfBytes, "application/pdf", requestedFormat)],
           requestedFormat,

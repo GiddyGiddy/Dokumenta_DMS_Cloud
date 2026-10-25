@@ -26,6 +26,7 @@ public sealed class SearchServiceTests
               "taskId": "{{taskId:D}}",
               "taskType": "search-index",
               "documentKind": "Invoice",
+              "tenantId": "tenant:00000000-0000-0000-0000-000000000001",
               "inputReference": "{{artifactUrl}}"
             }
             """;
@@ -37,6 +38,7 @@ public sealed class SearchServiceTests
         Assert.Equal(documentId, command.DocumentId);
         Assert.Equal(taskId, command.TaskId);
         Assert.Equal("Invoice", command.DocumentKind);
+        Assert.Equal("tenant:00000000-0000-0000-0000-000000000001", command.TenantId);
         Assert.Equal(artifactUrl, command.ArtifactReference);
     }
 
@@ -54,6 +56,25 @@ public sealed class SearchServiceTests
               "taskType": "search-index",
               "documentKind": "Invoice",
               "inputReference": null
+            }
+            """;
+
+        Assert.Throws<InvalidDataException>(() => SearchIndexCommand.Parse(Encoding.UTF8.GetBytes(payload), null));
+    }
+
+    [Fact]
+    public void RejectsSearchIndexCommandsWithoutTenantOwnership()
+    {
+        var payload = $$"""
+            {
+              "eventId": "{{Guid.NewGuid():D}}",
+              "eventType": "document.task.requested",
+              "schemaVersion": 1,
+              "correlationId": "{{Guid.NewGuid():D}}",
+              "documentId": "{{Guid.NewGuid():D}}",
+              "taskId": "{{Guid.NewGuid():D}}",
+              "taskType": "search-index",
+              "inputReference": "http://extraction.local/api/internal/extraction-artifacts/{{Guid.NewGuid():D}}"
             }
             """;
 

@@ -8,6 +8,7 @@ public sealed record ExtractionRequest(
     Guid DocumentId,
     Guid TaskId,
     string DocumentKind,
+    string TenantId,
     string? InputReference,
     string RawPayload)
 {
@@ -32,12 +33,19 @@ public sealed record ExtractionRequest(
             throw new InvalidDataException("The task request is not an extraction task.");
         }
 
+        var tenantId = ReadString(root, "tenantId");
+        if (!IsTenantIdValid(tenantId))
+        {
+            throw new InvalidDataException("The extraction request is missing a valid tenantId.");
+        }
+
         return new ExtractionRequest(
             ReadGuid(root, "eventId") ?? ParseGuid(messageId, "MessageId"),
             RequiredGuid(root, "correlationId"),
             RequiredGuid(root, "documentId"),
             RequiredGuid(root, "taskId"),
             ReadString(root, "documentKind") ?? "Unknown",
+            tenantId!,
             ReadString(root, "inputReference"),
             JsonSerializer.Serialize(root));
     }
@@ -84,5 +92,27 @@ public sealed record ExtractionRequest(
         }
 
         return null;
+    }
+
+    private static bool IsTenantIdValid(string? value)
+    {
+        if (value is null)
+        {
+            return false;
+        }
+
+        var separator = value.IndexOf(':');
+        var identity = separator < 0 ? string.Empty : value[(separator + 1)..];
+        var isPersonal = separator >= 0 && value[..separator] == "personal";
+        var validIdentity = Guid.TryParse(identity, out _) ||
+            (isPersonal && identity.Length == 64 &&
+             identity.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f'));
+        if (separator < 0 || !validIdentity ||
+            value.IndexOf(':', separator + 1) >= 0)
+        {
+            return false;
+        }
+
+        return value[..separator] is "tenant" or "personal";
     }
 }
