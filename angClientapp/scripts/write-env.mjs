@@ -11,7 +11,8 @@ const required = (name) => {
   return value;
 };
 
-const apiURL = required('API_URL').replace(/\/$/, '');
+const apiBase = required('API_URL').replace(/\/$/, '');
+const apiURL = apiBase.endsWith('/api') ? apiBase : `${apiBase}/api`;
 const redirectUri = required('SPA_REDIRECT_URI').replace(/\/$/, '');
 const tenantId = process.env.ENTRA_TENANT_ID ?? '55215293-ec4f-4ae2-a3e8-f76555cb6175';
 const clientId = process.env.ENTRA_CLIENT_ID ?? '17423049-7fff-4aec-86ef-35fa0c52cbba';
