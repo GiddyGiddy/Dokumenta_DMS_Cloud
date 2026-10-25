@@ -49,8 +49,9 @@ public sealed class AgenticSearchService(
         Do not write SQL, call other services, or claim that a search succeeded unless the tool returned results.
         """;
 
-    public async Task<AgenticSearchResponse> AnswerAsync(string question, CancellationToken cancellationToken)
+    public async Task<AgenticSearchResponse> AnswerAsync(string tenantId, string question, CancellationToken cancellationToken)
     {
+        TenantIds.Require(tenantId);
         if (!options.AgenticSearch.IsConfigured)
         {
             throw new AgenticSearchUnavailableException("Agentic search is disabled or its model endpoint/deployment is not configured.");
@@ -64,14 +65,14 @@ public sealed class AgenticSearchService(
         var modelOptions = options.AgenticSearch;
         if (modelOptions.Provider == "FoundryLocal")
         {
-            return await AnswerWithFoundryLocalAsync(question, cancellationToken);
+            return await AnswerWithFoundryLocalAsync(tenantId, question, cancellationToken);
         }
 
         var client = new OpenAIClient(
             new ApiKeyCredential(modelOptions.ApiKey),
             new OpenAIClientOptions { Endpoint = new Uri(modelOptions.Endpoint, UriKind.Absolute) });
         var chatClient = client.GetChatClient(modelOptions.ModelName);
-        var tool = new HybridSearchFunction(database, embeddingClient, modelOptions.MaximumToolCalls);
+        var tool = new HybridSearchFunction(database, embeddingClient, tenantId, modelOptions.MaximumToolCalls);
         var agent = chatClient.AsAIAgent(
             name: "DocumentSearchAgent",
             instructions: Instructions,
@@ -82,11 +83,11 @@ public sealed class AgenticSearchService(
         return new AgenticSearchResponse(response.Text, tool.Sources);
     }
 
-    private async Task<AgenticSearchResponse> AnswerWithFoundryLocalAsync(string question, CancellationToken cancellationToken)
+    private async Task<AgenticSearchResponse> AnswerWithFoundryLocalAsync(string tenantId, string question, CancellationToken cancellationToken)
     {
         var modelOptions = options.AgenticSearch;
         var endpoint = new Uri(new Uri(modelOptions.Endpoint.TrimEnd('/') + "/"), "chat/completions");
-        var tool = new HybridSearchFunction(database, embeddingClient, modelOptions.MaximumToolCalls);
+        var tool = new HybridSearchFunction(database, embeddingClient, tenantId, modelOptions.MaximumToolCalls);
         var messages = new JsonArray
         {
             new JsonObject
@@ -246,6 +247,7 @@ public sealed class AgenticSearchService(
 public sealed class HybridSearchFunction(
     SearchDatabase database,
     ITextEmbeddingClient embeddingClient,
+    string tenantId,
     int maximumCalls)
 {
     private int _callCount;
@@ -287,7 +289,7 @@ public sealed class HybridSearchFunction(
 
         var vectors = await embeddingClient.EmbedAsync([semanticQuery], cancellationToken);
         var filter = new SearchFilter(documentKind, entityName, parsedFrom, parsedTo, keyword);
-        var results = await database.SearchHybridAsync(filter, Math.Clamp(limit, 1, 20), vectors[0], cancellationToken);
+        var results = await database.SearchHybridAsync(tenantId, filter, Math.Clamp(limit, 1, 20), vectors[0], cancellationToken);
         foreach (var result in results)
         {
             _sources.Enqueue(result);

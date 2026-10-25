@@ -47,6 +47,7 @@ else
 }
 builder.Services.AddScoped<IDocumentStorageService, DocumentStorageService>();
 builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IOutboxStore, EfOutboxStore>();
 builder.Services.AddScoped<IDocumentRevisionService, DocumentRevisionService>();
 builder.Services.AddOptions<SearchProxyOptions>()

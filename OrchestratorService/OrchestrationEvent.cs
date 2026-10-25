@@ -18,7 +18,8 @@ public sealed record OrchestrationEvent(
     Guid? TaskId,
     string? TaskType,
     string? OutputReference,
-    string? FailureSummary)
+    string? FailureSummary,
+    string? TenantId = null)
 {
     public static OrchestrationEvent Parse(ReadOnlyMemory<byte> body, string? messageId, string? messageType)
     {
@@ -60,7 +61,8 @@ public sealed record OrchestrationEvent(
             ReadGuid(root, "taskId"),
             ReadString(root, "taskType"),
             ReadString(root, "outputReference"),
-            ReadString(root, "failureSummary"));
+            ReadString(root, "failureSummary"),
+            ReadString(root, "tenantId"));
     }
 
     private static IngestedDocument ParseDocument(JsonElement document)

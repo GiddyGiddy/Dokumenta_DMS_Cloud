@@ -29,6 +29,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
             );
             CREATE INDEX IF NOT EXISTS ix_document_workflows_correlation_id
                 ON document_workflows (correlation_id);
+            ALTER TABLE document_workflows ADD COLUMN IF NOT EXISTS tenant_id text NULL;
             CREATE TABLE IF NOT EXISTS document_tasks (
                 task_id uuid PRIMARY KEY,
                 document_id uuid NOT NULL REFERENCES document_workflows(document_id),
@@ -92,7 +93,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
 
                 foreach (var document in message.Documents)
                 {
-                    await StartWorkflowAsync(connection, transaction, message.CorrelationId, document, cancellationToken);
+                    await StartWorkflowAsync(connection, transaction, message.CorrelationId, message.TenantId, document, cancellationToken);
                 }
                 break;
             case "document.task.completed":
@@ -193,6 +194,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid correlationId,
+        string? tenantId,
         IngestedDocument document,
         CancellationToken cancellationToken)
     {
@@ -200,11 +202,12 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         var kind = classifier.Classify(document.OriginalFileName, document.ContentType);
         await using var workflowCommand = new NpgsqlCommand("""
             INSERT INTO document_workflows
-                (document_id, correlation_id, original_file_name, content_type, document_kind, status, created_at_utc, updated_at_utc)
-            VALUES (@document_id, @correlation_id, @file_name, @content_type, @document_kind, 'Processing', @now, @now)
+                (document_id, correlation_id, original_file_name, content_type, document_kind, status, created_at_utc, updated_at_utc, tenant_id)
+            VALUES (@document_id, @correlation_id, @file_name, @content_type, @document_kind, 'Processing', @now, @now, @tenant_id)
             ON CONFLICT (document_id) DO NOTHING
             RETURNING document_id;
             """, connection, transaction);
+        workflowCommand.Parameters.AddWithValue("tenant_id", (object?)tenantId ?? DBNull.Value);
         workflowCommand.Parameters.AddWithValue("document_id", document.DocumentId);
         workflowCommand.Parameters.AddWithValue("correlation_id", correlationId);
         workflowCommand.Parameters.AddWithValue("file_name", document.OriginalFileName);
@@ -216,7 +219,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
             return;
         }
 
-        await AddTaskAsync(connection, transaction, correlationId, document.DocumentId, kind, "extraction", null, now, cancellationToken);
+        await AddTaskAsync(connection, transaction, correlationId, tenantId, document.DocumentId, kind, "extraction", null, now, cancellationToken);
     }
 
     private static async Task CompleteTaskAsync(
@@ -256,11 +259,11 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
             if (workflow is not null)
             {
                 var now = DateTimeOffset.UtcNow;
-                await AddTaskAsync(connection, transaction, workflow.Value.CorrelationId, documentId,
+                await AddTaskAsync(connection, transaction, workflow.Value.CorrelationId, workflow.Value.TenantId, documentId,
                     workflow.Value.Kind, "search-index", message.OutputReference, now, cancellationToken);
                 if (workflow.Value.Kind is DocumentKind.Contract or DocumentKind.Invoice or DocumentKind.FinancialStatement)
                 {
-                    await AddTaskAsync(connection, transaction, workflow.Value.CorrelationId, documentId,
+                    await AddTaskAsync(connection, transaction, workflow.Value.CorrelationId, workflow.Value.TenantId, documentId,
                         workflow.Value.Kind, "semantic-review", message.OutputReference, now, cancellationToken);
                 }
             }
@@ -309,6 +312,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid correlationId,
+        string? tenantId,
         Guid documentId,
         DocumentKind kind,
         string taskType,
@@ -336,6 +340,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
             eventType = "document.task.requested",
             schemaVersion = 1,
             correlationId,
+            tenantId,
             documentId,
             taskId,
             taskType,
@@ -357,19 +362,19 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         await outboxCommand.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task<(Guid CorrelationId, DocumentKind Kind)?> GetWorkflowAsync(
+    private static async Task<(Guid CorrelationId, DocumentKind Kind, string? TenantId)?> GetWorkflowAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid documentId,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("""
-            SELECT correlation_id, document_kind FROM document_workflows WHERE document_id = @document_id;
+            SELECT correlation_id, document_kind, tenant_id FROM document_workflows WHERE document_id = @document_id;
             """, connection, transaction);
         command.Parameters.AddWithValue("document_id", documentId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
-            ? (reader.GetGuid(0), Enum.Parse<DocumentKind>(reader.GetString(1)))
+            ? (reader.GetGuid(0), Enum.Parse<DocumentKind>(reader.GetString(1)), reader.IsDBNull(2) ? null : reader.GetString(2))
             : null;
     }
 

@@ -34,11 +34,16 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
     private const int EventSchemaVersion = 1;
     private readonly AppDbContext _dbContext;
     private readonly IDocumentBlobStore _blobStore;
+    private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? _httpContextAccessor;
 
-    public DocumentIngestionService(AppDbContext dbContext, IDocumentBlobStore? blobStore = null)
+    public DocumentIngestionService(
+        AppDbContext dbContext,
+        IDocumentBlobStore? blobStore = null,
+        Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor = null)
     {
         _dbContext = dbContext;
         _blobStore = blobStore ?? new DisabledDocumentBlobStore();
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<DocumentIngestionResult> IngestAsync(
@@ -112,6 +117,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
             eventId,
             eventType = EventType,
             schemaVersion = EventSchemaVersion,
+            tenantId = TenantKey.FromPrincipal(_httpContextAccessor?.HttpContext?.User),
             documentId,
             processingStatus = DocumentProcessingStatus.Completed.ToString(),
             requestedOutputFormat = requestedOutputFormat.ToString(),

@@ -110,6 +110,12 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public string ResolveIndexTenant(SearchIndexCommand indexCommand)
+    {
+        // Events created before tenant propagation fall back to the configured default tenant.
+        return string.IsNullOrWhiteSpace(indexCommand.TenantId) ? options.TenantId : TenantIds.Require(indexCommand.TenantId);
+    }
+
     public async Task<bool> IndexAsync(
         SearchIndexCommand indexCommand,
         ExtractionArtifactResponse artifact,
@@ -124,6 +130,7 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
             throw new InvalidDataException("Search chunks and embedding vectors are missing or have mismatched dimensions.");
         }
 
+        var tenantId = ResolveIndexTenant(indexCommand);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using (var inbox = new NpgsqlCommand("""
@@ -161,7 +168,7 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
                 indexed_at_utc = EXCLUDED.indexed_at_utc;
             """, connection, transaction))
         {
-            document.Parameters.AddWithValue("tenant_id", options.TenantId);
+            document.Parameters.AddWithValue("tenant_id", tenantId);
             document.Parameters.AddWithValue("document_id", indexCommand.DocumentId);
             document.Parameters.AddWithValue("correlation_id", indexCommand.CorrelationId);
             document.Parameters.AddWithValue("document_kind", indexCommand.DocumentKind);
@@ -180,7 +187,7 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
             DELETE FROM search_chunks WHERE tenant_id = @tenant_id AND document_id = @document_id;
             """, connection, transaction))
         {
-            deleteChunks.Parameters.AddWithValue("tenant_id", options.TenantId);
+            deleteChunks.Parameters.AddWithValue("tenant_id", tenantId);
             deleteChunks.Parameters.AddWithValue("document_id", indexCommand.DocumentId);
             await deleteChunks.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -195,7 +202,7 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
                 VALUES
                     (@tenant_id, @document_id, @chunk_index, @chunk_text, @page_number, @bounding_box, @embedding::vector);
                 """, connection, transaction);
-            insertChunk.Parameters.AddWithValue("tenant_id", options.TenantId);
+            insertChunk.Parameters.AddWithValue("tenant_id", tenantId);
             insertChunk.Parameters.AddWithValue("document_id", indexCommand.DocumentId);
             insertChunk.Parameters.AddWithValue("chunk_index", chunk.ChunkIndex);
             insertChunk.Parameters.AddWithValue("chunk_text", chunk.Text);
@@ -237,17 +244,19 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
     }
 
     public async Task<IReadOnlyList<SearchResult>> SearchDeterministicAsync(
+        string tenantId,
         SearchFilter filter,
         int limit,
         CancellationToken cancellationToken)
     {
         limit = Math.Clamp(limit, 1, 100);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = CreateFilteredQuery(connection, null, filter, limit, hybrid: false);
+        await using var command = CreateFilteredQuery(connection, tenantId, null, filter, limit, hybrid: false);
         return await ReadResultsAsync(command, cancellationToken);
     }
 
     public async Task<IReadOnlyList<SearchResult>> SearchHybridAsync(
+        string tenantId,
         SearchFilter filter,
         int limit,
         float[] queryEmbedding,
@@ -260,7 +269,7 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
 
         limit = Math.Clamp(limit, 1, 100);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = CreateFilteredQuery(connection, FormatVector(queryEmbedding), filter, limit, hybrid: true);
+        await using var command = CreateFilteredQuery(connection, tenantId, FormatVector(queryEmbedding), filter, limit, hybrid: true);
         return await ReadResultsAsync(command, cancellationToken);
     }
 
@@ -312,7 +321,7 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
             """, command => command.Parameters.AddWithValue("next_attempt", DateTimeOffset.UtcNow.Add(delay)), cancellationToken);
     }
 
-    private NpgsqlCommand CreateFilteredQuery(NpgsqlConnection connection, string? embedding, SearchFilter filter, int limit, bool hybrid)
+    private NpgsqlCommand CreateFilteredQuery(NpgsqlConnection connection, string tenantId, string? embedding, SearchFilter filter, int limit, bool hybrid)
     {
         var score = hybrid ? "1 - (chunk.embedding <=> @embedding::vector)" : "NULL::double precision";
         var order = hybrid ? "chunk.embedding <=> @embedding::vector" : "document.document_date DESC NULLS LAST, document.indexed_at_utc DESC";
@@ -331,7 +340,7 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
             ORDER BY {order}
             LIMIT @limit;
             """, connection);
-        command.Parameters.AddWithValue("tenant_id", options.TenantId);
+        command.Parameters.AddWithValue("tenant_id", tenantId);
         command.Parameters.Add(new NpgsqlParameter("kind", NpgsqlDbType.Text)
         {
             Value = (object?)filter.DocumentKind ?? DBNull.Value

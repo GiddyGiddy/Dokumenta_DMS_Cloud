@@ -17,8 +17,13 @@ public sealed class SearchServiceProxy(HttpClient httpClient, IOptions<SearchPro
 {
     private readonly SearchProxyOptions _options = options.Value;
 
-    public async Task<SearchProxyResponse> PostAsync<TRequest>(string route, TRequest body, CancellationToken cancellationToken)
+    public async Task<SearchProxyResponse> PostAsync<TRequest>(string route, string tenantId, TRequest body, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            throw new ArgumentException("A tenant key is required.", nameof(tenantId));
+        }
+
         if (route is not ("api/search/deterministic" or "api/search/hybrid" or "api/search/agentic"))
         {
             throw new ArgumentOutOfRangeException(nameof(route), "Only known Search Service API routes can be proxied.");
@@ -29,6 +34,7 @@ public sealed class SearchServiceProxy(HttpClient httpClient, IOptions<SearchPro
             Content = JsonContent.Create(body)
         };
         request.Headers.TryAddWithoutValidation("X-Search-Api-Key", _options.ApiKey);
+        request.Headers.TryAddWithoutValidation("X-Tenant-Id", tenantId);
         using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
         return new SearchProxyResponse(response.StatusCode, content, response.Content.Headers.ContentType?.ToString());

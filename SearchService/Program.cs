@@ -53,6 +53,11 @@ app.MapPost("/api/search/deterministic", async Task<IResult> (
         return Results.Unauthorized();
     }
 
+    if (!TenantIds.TryRead(httpRequest, out var tenantId))
+    {
+        return Results.BadRequest(new { error = "A valid X-Tenant-Id header is required." });
+    }
+
     if (request.Filter is null)
     {
         return Results.BadRequest(new { error = "A search filter object is required." });
@@ -63,7 +68,7 @@ app.MapPost("/api/search/deterministic", async Task<IResult> (
         return Results.BadRequest(new { error = "dateFrom must be earlier than or equal to dateTo." });
     }
 
-    return Results.Ok(await database.SearchDeterministicAsync(request.Filter, request.Limit, cancellationToken));
+    return Results.Ok(await database.SearchDeterministicAsync(tenantId, request.Filter, request.Limit, cancellationToken));
 });
 
 app.MapPost("/api/search/hybrid", async Task<IResult> (
@@ -78,6 +83,11 @@ app.MapPost("/api/search/hybrid", async Task<IResult> (
         return Results.Unauthorized();
     }
 
+    if (!TenantIds.TryRead(httpRequest, out var tenantId))
+    {
+        return Results.BadRequest(new { error = "A valid X-Tenant-Id header is required." });
+    }
+
     if (request.Filter is null || string.IsNullOrWhiteSpace(request.SemanticQuery))
     {
         return Results.BadRequest(new { error = "A semantic query and filter object are required." });
@@ -89,7 +99,7 @@ app.MapPost("/api/search/hybrid", async Task<IResult> (
     }
 
     var vectors = await embeddingClient.EmbedAsync([request.SemanticQuery], cancellationToken);
-    return Results.Ok(await database.SearchHybridAsync(request.Filter, request.Limit, vectors[0], cancellationToken));
+    return Results.Ok(await database.SearchHybridAsync(tenantId, request.Filter, request.Limit, vectors[0], cancellationToken));
 });
 
 app.MapPost("/api/search/agentic", async Task<IResult> (
@@ -103,6 +113,11 @@ app.MapPost("/api/search/agentic", async Task<IResult> (
         return Results.Unauthorized();
     }
 
+    if (!TenantIds.TryRead(httpRequest, out var tenantId))
+    {
+        return Results.BadRequest(new { error = "A valid X-Tenant-Id header is required." });
+    }
+
     if (string.IsNullOrWhiteSpace(request.Question))
     {
         return Results.BadRequest(new { error = "A natural-language search question is required." });
@@ -113,7 +128,7 @@ app.MapPost("/api/search/agentic", async Task<IResult> (
         return Results.Problem("Agentic search is unavailable until both chat and embedding models are configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
-    var response = await agent.AnswerAsync(request.Question, cancellationToken);
+    var response = await agent.AnswerAsync(tenantId, request.Question, cancellationToken);
     return Results.Ok(response);
 });
 

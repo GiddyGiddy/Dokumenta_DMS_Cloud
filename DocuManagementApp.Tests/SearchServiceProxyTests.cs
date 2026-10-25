@@ -23,11 +23,12 @@ public sealed class SearchServiceProxyTests
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://search.local/") };
         var proxy = new SearchServiceProxy(httpClient, Options.Create(new SearchProxyOptions { ApiKey = "server-only-key" }));
 
-        var response = await proxy.PostAsync("api/search/deterministic", new { filter = new { documentKind = "Contract" } }, CancellationToken.None);
+        var response = await proxy.PostAsync("api/search/deterministic", "tenant:abc", new { filter = new { documentKind = "Contract" } }, CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("http://search.local/api/search/deterministic", capturedRequest?.RequestUri?.ToString());
         Assert.Equal("server-only-key", capturedRequest?.Headers.GetValues("X-Search-Api-Key").Single());
+        Assert.Equal("tenant:abc", capturedRequest?.Headers.GetValues("X-Tenant-Id").Single());
         Assert.Equal("[]", response.Content);
     }
 
@@ -39,7 +40,7 @@ public sealed class SearchServiceProxyTests
         var proxy = new SearchServiceProxy(httpClient, Options.Create(new SearchProxyOptions { ApiKey = "server-only-key" }));
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
-            () => proxy.PostAsync("api/admin/delete", new { }, CancellationToken.None));
+            () => proxy.PostAsync("api/admin/delete", "tenant:abc", new { }, CancellationToken.None));
     }
 
     private sealed class StubHttpMessageHandler(

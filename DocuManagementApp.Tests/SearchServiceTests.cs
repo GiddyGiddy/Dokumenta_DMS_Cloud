@@ -218,7 +218,7 @@ public sealed class SearchServiceTests
             httpClient);
 
         await Assert.ThrowsAsync<AgenticSearchUnavailableException>(
-            () => agent.AnswerAsync("Find agreements", CancellationToken.None));
+            () => agent.AnswerAsync("tenant:test", "Find agreements", CancellationToken.None));
     }
 
     [Fact]
@@ -258,7 +258,7 @@ public sealed class SearchServiceTests
         var agent = new AgenticSearchService(options, new SearchDatabase(dataSource, options),
             new OpenAiCompatibleEmbeddingClient(httpClient, options), httpClient);
 
-        var answer = await agent.AnswerAsync("Find vendor renewal terms", CancellationToken.None);
+        var answer = await agent.AnswerAsync("tenant:test", "Find vendor renewal terms", CancellationToken.None);
 
         Assert.Equal("No matching documents were found.", answer.Answer);
         Assert.Equal("http://localhost:5273/v1/chat/completions", capturedRequestUri);
@@ -291,6 +291,7 @@ public sealed class SearchServiceTests
         var function = new HybridSearchFunction(
             new SearchDatabase(dataSource, options),
             new OpenAiCompatibleEmbeddingClient(httpClient, options),
+            "tenant:test",
             maximumCalls: 2);
 
         var result = await function.ExecuteHybridSearchAsync(

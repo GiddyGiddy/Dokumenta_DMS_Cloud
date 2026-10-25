@@ -8,7 +8,8 @@ public sealed record SearchIndexCommand(
     Guid DocumentId,
     Guid TaskId,
     string DocumentKind,
-    string ArtifactReference)
+    string ArtifactReference,
+    string? TenantId = null)
 {
     public static SearchIndexCommand Parse(ReadOnlyMemory<byte> body, string? messageId)
     {
@@ -42,7 +43,8 @@ public sealed record SearchIndexCommand(
             RequiredGuid(root, "documentId"),
             RequiredGuid(root, "taskId"),
             ReadString(root, "documentKind") ?? "Unknown",
-            artifactUri.ToString());
+            artifactUri.ToString(),
+            ReadString(root, "tenantId"));
     }
 
     private static Guid RequiredGuid(JsonElement element, string name)

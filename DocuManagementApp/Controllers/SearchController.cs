@@ -10,8 +10,7 @@ namespace DocuManagementApp.Controllers;
 [Microsoft.AspNetCore.Authorization.Authorize(Policy = "DmsRead")]
 public sealed class SearchController(
     SearchServiceProxy searchProxy,
-    IOptions<SearchProxyOptions> options,
-    IWebHostEnvironment environment) : ControllerBase
+    IOptions<SearchProxyOptions> options) : ControllerBase
 {
     [HttpPost("deterministic")]
     public Task<IActionResult> Deterministic(JsonElement request, CancellationToken cancellationToken)
@@ -33,20 +32,20 @@ public sealed class SearchController(
 
     private async Task<IActionResult> ForwardAsync(string route, JsonElement request, CancellationToken cancellationToken)
     {
-        if (!environment.IsDevelopment())
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                new { message = "Search proxy is disabled outside Development until authenticated tenant identity is configured." });
-        }
-
         if (!options.Value.Enabled)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = "Search proxy is disabled." });
         }
 
+        var tenantId = TenantKey.FromPrincipal(User);
+        if (tenantId is null)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "The access token does not carry a usable tenant identity." });
+        }
+
         try
         {
-            var response = await searchProxy.PostAsync(route, request, cancellationToken);
+            var response = await searchProxy.PostAsync(route, tenantId, request, cancellationToken);
             return new ContentResult
             {
                 StatusCode = (int)response.StatusCode,
