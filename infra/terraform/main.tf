@@ -116,6 +116,7 @@ locals {
         "search-key"   = var.search_api_key
         "artifact-key" = var.artifact_api_key
         "emb-key"      = var.openai_key != "" ? var.openai_key : "unset"
+        "agentic-key"  = var.agentic_search_api_key != "" ? var.agentic_search_api_key : "unset"
       })
       env = [
         { name = "ConnectionStrings__Search", value = null, secret = "db" },
@@ -131,6 +132,12 @@ locals {
         { name = "Search__Embeddings__Endpoint", value = "https://api.openai.com/v1", secret = null },
         { name = "Search__Embeddings__ModelName", value = var.embeddings_model, secret = null },
         { name = "Search__Embeddings__ApiKey", value = null, secret = "emb-key" },
+        { name = "Search__AgenticSearch__Provider", value = "AzureOpenAI", secret = null },
+        { name = "Search__AgenticSearch__Enabled", value = var.agentic_search_enabled && var.agentic_search_api_key != "" ? "true" : "false", secret = null },
+        { name = "Search__AgenticSearch__Endpoint", value = var.agentic_search_endpoint, secret = null },
+        { name = "Search__AgenticSearch__ApiVersion", value = var.agentic_search_api_version, secret = null },
+        { name = "Search__AgenticSearch__ModelName", value = var.agentic_search_model, secret = null },
+        { name = "Search__AgenticSearch__ApiKey", value = null, secret = "agentic-key" },
       ]
     }
   } : {}

@@ -113,3 +113,31 @@ variable "embeddings_model" {
   type    = string
   default = "text-embedding-3-small"
 }
+
+variable "agentic_search_api_key" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Azure OpenAI API key for Agentic Search. Keep it in TF_VAR_agentic_search_api_key or another secret store."
+}
+
+variable "agentic_search_enabled" {
+  type        = bool
+  default     = true
+  description = "Enable Agentic Search when its API key is supplied."
+}
+
+variable "agentic_search_endpoint" {
+  type    = string
+  default = "https://dokumenta-fr.cognitiveservices.azure.com/"
+}
+
+variable "agentic_search_api_version" {
+  type    = string
+  default = "2024-12-01-preview"
+}
+
+variable "agentic_search_model" {
+  type    = string
+  default = "gpt-5.4-mini"
+}

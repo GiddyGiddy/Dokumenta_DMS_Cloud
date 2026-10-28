@@ -37,6 +37,7 @@ env:
   TF_VAR_search_api_key: ${{ secrets.TF_SEARCH_API_KEY }}
   TF_VAR_gemini_key: ${{ secrets.TF_GEMINI_KEY }}
   TF_VAR_openai_key: ${{ secrets.TF_OPENAI_KEY }}
+  TF_VAR_agentic_search_api_key: ${{ secrets.TF_AGENTIC_SEARCH_API_KEY }}
   TF_VAR_document_intelligence_key: ${{ secrets.TF_DOCUMENT_INTELLIGENCE_KEY }}
 
 defaults:

@@ -296,6 +296,62 @@ public sealed class SearchServiceTests
     }
 
     [Fact]
+    public async Task AzureOpenAiAgentUsesEndpointApiVersionAndApiKeyHeader()
+    {
+        string? capturedRequestUri = null;
+        string? capturedApiKey = null;
+        string? capturedAuthorization = null;
+        string? capturedRequestBody = null;
+        var handler = new StubHttpMessageHandler(async (request, _) =>
+        {
+            capturedRequestUri = request.RequestUri?.ToString();
+            capturedApiKey = request.Headers.GetValues("api-key").Single();
+            capturedAuthorization = request.Headers.Authorization?.ToString();
+            capturedRequestBody = await request.Content!.ReadAsStringAsync();
+            return JsonResponse("""
+                {"choices":[{"message":{"role":"assistant","content":"FINAL: No matching documents were found.","tool_calls":[]},"finish_reason":"stop"}]}
+                """);
+        });
+        using var httpClient = new HttpClient(handler);
+        await using var dataSource = NpgsqlDataSource.Create("Host=localhost;Database=searchdb");
+        var options = new SearchOptions
+        {
+            Embeddings = new EmbeddingOptions
+            {
+                Provider = "Ollama",
+                Endpoint = "http://localhost:11434/v1/",
+                ModelName = "bge-m3"
+            },
+            AgenticSearch = new AgenticSearchOptions
+            {
+                Provider = "AzureOpenAI",
+                Enabled = true,
+                Endpoint = "https://dokumenta-fr.cognitiveservices.azure.com/",
+                ApiVersion = "2024-12-01-preview",
+                ModelName = "gpt-5.4-mini",
+                ApiKey = "test-key"
+            }
+        };
+        var agent = new AgenticSearchService(options, new SearchDatabase(dataSource, options),
+            new OpenAiCompatibleEmbeddingClient(httpClient, options), httpClient);
+
+        var answer = await agent.AnswerAsync(
+            "tenant:00000000-0000-0000-0000-000000000001",
+            "Find vendor renewal terms",
+            CancellationToken.None);
+
+        Assert.Equal("No matching documents were found.", answer.Answer);
+        Assert.Equal(
+            "https://dokumenta-fr.cognitiveservices.azure.com/openai/deployments/gpt-5.4-mini/chat/completions?api-version=2024-12-01-preview",
+            capturedRequestUri);
+        Assert.Equal("test-key", capturedApiKey);
+        Assert.Null(capturedAuthorization);
+        using var body = JsonDocument.Parse(capturedRequestBody!);
+        Assert.False(body.RootElement.TryGetProperty("model", out _));
+        Assert.Equal("required", body.RootElement.GetProperty("tool_choice").GetString());
+    }
+
+    [Fact]
     public async Task SearchFunctionRejectsInvalidDocumentKindWithoutQuerying()
     {
         await using var dataSource = NpgsqlDataSource.Create("Host=localhost;Database=searchdb");

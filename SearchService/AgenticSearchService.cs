@@ -18,13 +18,15 @@ public sealed class AgenticSearchOptions
     public string Provider { get; set; } = "OpenAICompatible";
     public bool Enabled { get; set; }
     public string Endpoint { get; set; } = string.Empty;
+    public string ApiVersion { get; set; } = string.Empty;
     public string ModelName { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public int MaximumToolCalls { get; set; } = 2;
 
     public bool IsConfigured => Enabled &&
-        (Provider is "OpenAICompatible" or "FoundryLocal") &&
+        (Provider is "OpenAICompatible" or "FoundryLocal" or "AzureOpenAI") &&
         Uri.TryCreate(Endpoint, UriKind.Absolute, out _) &&
+        (Provider != "AzureOpenAI" || !string.IsNullOrWhiteSpace(ApiVersion)) &&
         !string.IsNullOrWhiteSpace(ModelName) &&
         !string.IsNullOrWhiteSpace(ApiKey) &&
         MaximumToolCalls is > 0 and <= 5;
@@ -63,9 +65,9 @@ public sealed class AgenticSearchService(
         }
 
         var modelOptions = options.AgenticSearch;
-        if (modelOptions.Provider == "FoundryLocal")
+        if (modelOptions.Provider is "FoundryLocal" or "AzureOpenAI")
         {
-            return await AnswerWithFoundryLocalAsync(tenantId, question, cancellationToken);
+            return await AnswerWithCompatibleEndpointAsync(tenantId, question, cancellationToken);
         }
 
         var client = new OpenAIClient(
@@ -83,10 +85,14 @@ public sealed class AgenticSearchService(
         return new AgenticSearchResponse(response.Text, tool.Sources);
     }
 
-    private async Task<AgenticSearchResponse> AnswerWithFoundryLocalAsync(string tenantId, string question, CancellationToken cancellationToken)
+    private async Task<AgenticSearchResponse> AnswerWithCompatibleEndpointAsync(string tenantId, string question, CancellationToken cancellationToken)
     {
         var modelOptions = options.AgenticSearch;
-        var endpoint = new Uri(new Uri(modelOptions.Endpoint.TrimEnd('/') + "/"), "chat/completions");
+        var isAzureOpenAI = modelOptions.Provider == "AzureOpenAI";
+        var endpoint = isAzureOpenAI
+            ? new Uri(new Uri(modelOptions.Endpoint.TrimEnd('/') + "/"),
+                $"openai/deployments/{Uri.EscapeDataString(modelOptions.ModelName)}/chat/completions?api-version={Uri.EscapeDataString(modelOptions.ApiVersion)}")
+            : new Uri(new Uri(modelOptions.Endpoint.TrimEnd('/') + "/"), "chat/completions");
         var tool = new HybridSearchFunction(database, embeddingClient, tenantId, modelOptions.MaximumToolCalls);
         var messages = new JsonArray
         {
@@ -143,18 +149,29 @@ public sealed class AgenticSearchService(
         {
             var requestBody = new JsonObject
             {
-                ["model"] = modelOptions.ModelName,
                 ["messages"] = messages.DeepClone(),
                 ["tools"] = tools.DeepClone(),
                 ["tool_choice"] = toolCallsUsed == 0 ? "required" : toolCallsUsed < modelOptions.MaximumToolCalls ? "auto" : "none",
                 ["max_completion_tokens"] = 512,
                 ["stream"] = false
             };
+            if (!isAzureOpenAI)
+            {
+                requestBody["model"] = modelOptions.ModelName;
+            }
+
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
             {
                 Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(requestBody))
             };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", modelOptions.ApiKey);
+            if (isAzureOpenAI)
+            {
+                request.Headers.TryAddWithoutValidation("api-key", modelOptions.ApiKey);
+            }
+            else
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", modelOptions.ApiKey);
+            }
             request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
             using var response = await httpClient.SendAsync(request, cancellationToken);

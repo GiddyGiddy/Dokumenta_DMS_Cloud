@@ -21,8 +21,8 @@ builder.Services.AddOptions<SearchOptions>()
         "Configure both Search:Embeddings:Endpoint and ModelName, or leave both empty.")
     .Validate(options => !options.AgenticSearch.Enabled || options.AgenticSearch.IsConfigured,
         "Agentic search is enabled but the chat endpoint, model, API key, or tool-call limit is invalid.")
-    .Validate(options => options.AgenticSearch.Provider is "OpenAICompatible" or "FoundryLocal",
-        "Search:AgenticSearch:Provider must be OpenAICompatible or FoundryLocal.")
+    .Validate(options => options.AgenticSearch.Provider is "OpenAICompatible" or "FoundryLocal" or "AzureOpenAI",
+        "Search:AgenticSearch:Provider must be OpenAICompatible, AzureOpenAI, or FoundryLocal.")
     .Validate(options => !options.AgenticSearch.Enabled || options.Embeddings.IsConfigured,
         "Agentic search requires the embeddings model used to index chunks.")
     .ValidateOnStart();
