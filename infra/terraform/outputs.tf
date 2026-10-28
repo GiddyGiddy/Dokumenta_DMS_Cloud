@@ -27,7 +27,7 @@ output "static_web_app_dns_zone_name" {
 }
 
 output "static_web_app_dns_name_servers" {
-  value = azurerm_dns_zone.web.name_servers
+  value = azurerm_dns_zone.custom_domain.name_servers
 }
 
 output "api_url" {
