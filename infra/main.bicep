@@ -45,6 +45,15 @@ param geminiModel string = 'gemini-3.8-flash'
 @secure()
 param openAiKey string = ''
 param embeddingsModel string = 'text-embedding-3-small'
+@description('API key for the Azure OpenAI Agentic Search deployment. Agentic Search remains disabled when this is empty.')
+@secure()
+param agenticSearchApiKey string = ''
+@description('Enable Agentic Search when its API key is supplied.')
+param agenticSearchEnabled bool = true
+@description('Azure OpenAI Agentic Search endpoint.')
+param agenticSearchEndpoint string = 'https://dokumenta-fr.cognitiveservices.azure.com/'
+param agenticSearchApiVersion string = '2024-12-01-preview'
+param agenticSearchModel string = 'gpt-5.4-mini'
 
 var rabbitUser = 'dms'
 var uniq = uniqueString(resourceGroup().id)
@@ -334,6 +343,7 @@ resource search 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
         { name: 'search-key', value: searchApiKey }
         { name: 'artifact-key', value: artifactApiKey }
         { name: 'emb-key', value: empty(openAiKey) ? 'unset' : openAiKey }
+        { name: 'agentic-key', value: empty(agenticSearchApiKey) ? 'unset' : agenticSearchApiKey }
       ]
     }
     template: {
@@ -355,6 +365,12 @@ resource search 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
           { name: 'Search__Embeddings__Endpoint', value: 'https://api.openai.com/v1' }
           { name: 'Search__Embeddings__ModelName', value: embeddingsModel }
           { name: 'Search__Embeddings__ApiKey', secretRef: 'emb-key' }
+          { name: 'Search__AgenticSearch__Provider', value: 'AzureOpenAI' }
+          { name: 'Search__AgenticSearch__Enabled', value: string(agenticSearchEnabled && !empty(agenticSearchApiKey)) }
+          { name: 'Search__AgenticSearch__Endpoint', value: agenticSearchEndpoint }
+          { name: 'Search__AgenticSearch__ApiVersion', value: agenticSearchApiVersion }
+          { name: 'Search__AgenticSearch__ModelName', value: agenticSearchModel }
+          { name: 'Search__AgenticSearch__ApiKey', secretRef: 'agentic-key' }
         ]
       }]
       scale: { minReplicas: 1, maxReplicas: 1 }
