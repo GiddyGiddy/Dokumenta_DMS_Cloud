@@ -76,6 +76,7 @@ locals {
         { name = "BlobStorage__AccountUrl", value = azurerm_storage_account.docs.primary_blob_endpoint, secret = null },
         { name = "AZURE_CLIENT_ID", value = azurerm_user_assigned_identity.apps.client_id, secret = null },
         { name = "Cors__AllowedOrigins__0", value = "https://${azurerm_static_web_app.web.default_host_name}", secret = null },
+        { name = "Cors__AllowedOrigins__1", value = "https://${var.swa_custom_domain}", secret = null },
         { name = "Database__MigrateOnStartup", value = "true", secret = null },
       ])
     }
@@ -370,4 +371,9 @@ resource "azurerm_static_web_app" "web" {
   location            = var.static_web_app_location
   sku_tier            = "Free"
   sku_size            = "Free"
+}
+
+resource "azurerm_dns_zone" "web" {
+  name                = var.dns_zone_name
+  resource_group_name = data.azurerm_resource_group.rg.name
 }
