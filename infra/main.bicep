@@ -392,6 +392,14 @@ resource swa 'Microsoft.Web/staticSites@2023-12-01' = {
   properties: {}
 }
 
+resource swaCustomDomainBinding 'Microsoft.Web/staticSites/customDomains@2024-11-01' = {
+  parent: swa
+  name: swaCustomDomain
+  properties: {
+    validationMethod: 'cname-delegation'
+  }
+}
+
 resource dnsZone 'Microsoft.Network/dnsZones@2018-05-01' = {
   name: dnsZoneName
   location: 'global'
