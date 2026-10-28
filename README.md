@@ -58,6 +58,17 @@ The DNS zone is the parent domain. The Static Web App custom hostname is `dwebap
 
 The PostgreSQL server currently has public network access enabled with the Azure-services firewall rule. Restricting database access through private networking is a production-hardening item.
 
+## Backend services
+
+| Service | Azure runtime | Responsibility | Database |
+|---|---|---|---|
+| `DocuManagementApp` | Public Azure Container App API | Entra authentication and role checks; tenant-scoped upload, listing, downloads, storage, revisions, and search proxy. | `documanagementdb` |
+| `OrchestratorService` | Background worker, no external ingress | Consumes document-ingested events, classifies known document types using metadata, and dispatches extraction jobs. It does not use an LLM to route documents. | `orchestratordb` |
+| `ExtractionService` | Internal Azure Container App | Retrieves document content through the API, runs layout and model extraction, validates results, and publishes artifacts and indexing requests. | `extractiondb` |
+| `SearchService` | Internal Azure Container App | Consumes indexing requests, chunks and embeds artifacts, and serves deterministic, hybrid, and agentic search to the API. | `searchdb` |
+
+RabbitMQ is an internal Container App used for the asynchronous event flow. The API is the only backend service with public ingress; service-to-service calls use internal endpoints and configured API keys.
+
 ## Application capabilities
 
 - **Document management:** authenticated upload, listing, download, conversion endpoints, and document metadata.
@@ -88,6 +99,53 @@ Legacy documents that have no tenant ownership must be assigned through a truste
 
 Keep all API keys and passwords in GitHub Actions secrets, Azure Container App secrets, or local user secrets. Terraform's remote state can contain secret values and must be access-controlled.
 
+## Agentic AI
+
+The system keeps deterministic decisions in application code and uses LLM agents for language understanding. Agent output is treated as a proposal: extraction results pass through validation, and the search agent can only call a constrained read-only search tool.
+
+```mermaid
+flowchart TD
+  ING[Document ingested] --> ORC[Deterministic orchestration]
+  ORC --> JOB[Extraction job]
+  JOB --> DI[Azure Document Intelligence layout]
+  DI --> KIND{Known document kind?}
+  KIND -- No --> CLS[Classifier agent]
+  KIND -- Yes --> EXTRACT[Extraction agent]
+  CLS --> EXTRACT
+  EXTRACT --> VALIDATE[Validate structured result]
+  VALIDATE -->|Issues remain| CORRECT[Correction agent]
+  CORRECT --> VALIDATE
+  VALIDATE -->|Valid or attempts exhausted| RESULT[Store result and publish index request]
+  QUESTION[User question] --> SEARCH_AGENT[Search agent]
+  SEARCH_AGENT --> TOOL[execute_hybrid_search]
+  TOOL --> SEARCH_INDEX[Tenant-scoped PostgreSQL search]
+  SEARCH_INDEX --> SEARCH_AGENT
+  SEARCH_AGENT --> ANSWER[Grounded answer with citations]
+```
+
+### Extraction agents
+
+The cloud extraction flow uses Azure Document Intelligence for layout analysis and Gemini for model-based tasks:
+
+| Agent | Role |
+|---|---|
+| Classifier | For an unknown kind, proposes a supported kind and confidence from extracted document text. |
+| Extractor | Produces structured JSON for the selected document kind. |
+| Corrector | Uses validation issues and the previous candidate to propose a corrected result. |
+
+Known kinds are routed deterministically from document metadata. Low-confidence or unsupported classifications are sent for manual review rather than guessed. Validators check extracted JSON; the generate/validate/correct loop is bounded to three attempts. The result status and artifacts are stored, and an indexing request is published for SearchService.
+
+### Agentic search
+
+For `/api/search/agentic`, `DocumentSearchAgent` turns a natural-language question into a call to the single `execute_hybrid_search` tool. The tool can use a semantic query and supported document filters; it cannot select a tenant, issue SQL, or call arbitrary services.
+
+- Supported tool inputs include `semanticQuery`, `documentKind`, `entityName`, `dateFrom`, `dateTo`, and `limit`.
+- Relative date phrases are converted to date filters using the request's current date.
+- The default tool-call budget is two (configurable from one to five).
+- Answers must be grounded in retrieved chunks, cite the source URL and page when available, and stay within two sentences. If no results match, the agent reports that no matching documents were found.
+- The search tool is tenant-scoped using the authenticated request context. The agent does not receive a tenant selector.
+- The cloud chat deployment is Azure OpenAI `gpt-5.4-mini` (`2024-12-01-preview`). Agentic search is only enabled when its API key is configured; deterministic and hybrid search do not depend on that chat key.
+
 ## CI/CD and infrastructure
 
 GitHub Actions workflows are under [`.github/workflows/`](./.github/workflows/):
@@ -101,45 +159,7 @@ Use **either Terraform or Bicep** to manage a given environment, not both agains
 
 ## Local development
 
-The production architecture is Azure-based, but the services can also be run locally. Local dependencies are defined in [`compose.yaml`](./compose.yaml): PostgreSQL and RabbitMQ are available by default, with an optional local Document Intelligence container under the `ai` profile.
-
-### Prerequisites
-
-- .NET 9 SDK and `dotnet-ef`.
-- Node.js 22 and npm.
-- Docker or Podman for local PostgreSQL, RabbitMQ, and optional conversion tooling.
-- Entra app registration settings and service credentials for authenticated or AI-backed workflows.
-
-### Start local dependencies
-
-Set local-only values in an untracked `.env` file, then start PostgreSQL and RabbitMQ:
-
-```powershell
-docker compose up -d postgres rabbitmq
-```
-
-Configure local connection strings, RabbitMQ credentials, Entra settings, and any model/API keys using user secrets or environment variables. Do not copy production credentials into local configuration.
-
-Restore and run the services from the repository root:
-
-```powershell
-dotnet restore angular_asp_core_web_api.sln
-dotnet ef database update --project DocuManagementApp
-dotnet run --project DocuManagementApp
-dotnet run --project OrchestratorService
-dotnet run --project ExtractionService
-dotnet run --project SearchService
-```
-
-Run the Angular application in another terminal:
-
-```powershell
-cd angClientapp
-npm ci
-npm start
-```
-
-The local API defaults to `http://localhost:5176`, ExtractionService's artifact API to `http://localhost:5085`, and SearchService to `http://localhost:5190`. Local user authentication requires a matching Entra SPA redirect URI and API scope.
+Local setup instructions are maintained in [GiddyGiddy/Document-Management-System](https://github.com/GiddyGiddy/Document-Management-System), which contains the README for local development.
 
 ## Tests and validation
 
