@@ -379,6 +379,11 @@ resource "azurerm_static_web_app_custom_domain" "web" {
   validation_type   = "cname-delegation"
 }
 
+import {
+  to = azurerm_static_web_app_custom_domain.web
+  id = "${data.azurerm_resource_group.rg.id}/providers/Microsoft.Web/staticSites/${local.swa_name}/customDomains/${var.swa_custom_domain}"
+}
+
 resource "azurerm_dns_zone" "web" {
   name                = "dms-documenta.com"
   resource_group_name = data.azurerm_resource_group.rg.name
