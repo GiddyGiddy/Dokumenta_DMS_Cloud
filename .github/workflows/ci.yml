@@ -58,7 +58,7 @@ jobs:
         run: npm run build:prod
         env:
           API_URL: ${{ vars.API_URL }}
-          SPA_REDIRECT_URI: ${{ vars.SPA_REDIRECT_URI }}
+          SPA_REDIRECT_URI: ${{ vars.SPA_REDIRECT_URI || 'https://documenta.giddyitsolutions.com' }}
 
   terraform:
     runs-on: ubuntu-latest

@@ -12,10 +12,10 @@ param location string = resourceGroup().location
 param staticWebAppLocation string = 'westeurope'
 
 @description('Registered parent domain for the Azure DNS public zone.')
-param dnsZoneName string = 'dms-documenta.com'
+param dnsZoneName string = 'giddyitsolutions.com'
 
 @description('Custom hostname to use for the Static Web App.')
-param swaCustomDomain string = 'dwebapp.dms-documenta.com'
+param swaCustomDomain string = 'documenta.giddyitsolutions.com'
 
 @description('false = infra only (ACR, DB, env, RabbitMQ). Build/push images, then redeploy with true.')
 param deployApps bool = false

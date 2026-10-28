@@ -38,13 +38,13 @@ variable "static_web_app_location" {
 
 variable "dns_zone_name" {
   type        = string
-  default     = "dms-documenta.com"
+  default     = "giddyitsolutions.com"
   description = "Registered parent domain for the Azure DNS public zone."
 }
 
 variable "swa_custom_domain" {
   type        = string
-  default     = "dwebapp.dms-documenta.com"
+  default     = "documenta.giddyitsolutions.com"
   description = "Custom hostname to use for the Static Web App."
 }
 

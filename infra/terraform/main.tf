@@ -373,6 +373,16 @@ resource "azurerm_static_web_app" "web" {
   sku_size            = "Free"
 }
 
+moved {
+  from = azurerm_dns_zone.web
+  to   = azurerm_dns_zone.legacy
+}
+
+resource "azurerm_dns_zone" "legacy" {
+  name                = "dms-documenta.com"
+  resource_group_name = data.azurerm_resource_group.rg.name
+}
+
 resource "azurerm_dns_zone" "web" {
   name                = var.dns_zone_name
   resource_group_name = data.azurerm_resource_group.rg.name

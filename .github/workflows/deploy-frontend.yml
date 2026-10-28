@@ -37,7 +37,7 @@ jobs:
         run: npm run build:prod
         env:
           API_URL: ${{ vars.API_URL }}
-          SPA_REDIRECT_URI: ${{ vars.SPA_REDIRECT_URI }}
+          SPA_REDIRECT_URI: ${{ vars.SPA_REDIRECT_URI || 'https://documenta.giddyitsolutions.com' }}
 
       - name: Deploy to Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
@@ -51,7 +51,7 @@ jobs:
       - name: Smoke test
         run: |
           for i in $(seq 1 10); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.SPA_REDIRECT_URI }}/")
+            code=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.SPA_REDIRECT_URI || 'https://documenta.giddyitsolutions.com' }}/")
             echo "status=$code"
             if [ "$code" = "200" ]; then exit 0; fi
             sleep 6

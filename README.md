@@ -241,9 +241,9 @@ Without Docker, run `CREATE DATABASE orchestratordb; CREATE DATABASE extractiond
 
 ## Azure Static Web App custom domain
 
-The Terraform and Bicep deployments create an Azure DNS public zone for `dms-documenta.com` and output its assigned name servers. After deployment, set those name servers at the domain registrar. Once delegation is visible, open the Static Web App in Azure portal and select **Custom domains** → **Add** → **Custom domain on Azure DNS**; choose the `dms-documenta.com` zone and enter `dwebapp` as the subdomain. Azure creates the required CNAME record, validates it, and provisions HTTPS.
+The Terraform and Bicep deployments create an Azure DNS public zone for `giddyitsolutions.com` and output its assigned name servers. After deployment, set those name servers at the domain registrar. Once delegation is visible, open the Static Web App in Azure portal and select **Custom domains** → **Add** → **Custom domain on Azure DNS**; choose the `giddyitsolutions.com` zone and enter `documenta` as the subdomain. Azure creates the required CNAME record, validates it, and provisions HTTPS.
 
-Before switching users to the custom URL, add `https://dwebapp.dms-documenta.com` as a redirect URI on the Entra app registration and update the Angular production `redirectUri`. The API CORS configuration allows both the generated Static Web App URL and the custom domain.
+Before switching users to the custom URL, add `https://documenta.giddyitsolutions.com` as a redirect URI on the Entra app registration and set the GitHub Actions `production` environment variable `SPA_REDIRECT_URI` to the same URL. The Angular build uses that value for MSAL, and the API CORS configuration allows both the generated Static Web App URL and the custom domain.
 
 ## Tests
 
