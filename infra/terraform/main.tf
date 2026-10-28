@@ -373,6 +373,12 @@ resource "azurerm_static_web_app" "web" {
   sku_size            = "Free"
 }
 
+resource "azurerm_static_web_app_custom_domain" "web" {
+  static_web_app_id = azurerm_static_web_app.web.id
+  domain_name       = var.swa_custom_domain
+  validation_type   = "cname-delegation"
+}
+
 resource "azurerm_dns_zone" "web" {
   name                = "dms-documenta.com"
   resource_group_name = data.azurerm_resource_group.rg.name

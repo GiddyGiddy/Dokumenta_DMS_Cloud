@@ -17,7 +17,7 @@ The checked-in frontend environment currently points to the generated Static Web
 - Static Web App: `https://zealous-water-0bf079110.2.azurestaticapps.net`
 - API: `https://docmanager.blackdune-d31605d8.swedencentral.azurecontainerapps.io/api`
 
-The production frontend workflow takes `API_URL` and `SPA_REDIRECT_URI` from the GitHub Actions environment, so those values determine the deployed frontend configuration. The intended custom frontend hostname is `https://dwebapp.dms-documenta.com`; DNS delegation, Static Web Apps domain binding, and the Entra redirect URI must be configured before switching to it.
+The production frontend workflow takes `API_URL` and `SPA_REDIRECT_URI` from the GitHub Actions environment, so those values determine the deployed frontend configuration. The intended custom frontend hostname is `https://documenta.giddyitsolutions.com`. DNS, Static Web Apps domain validation, and the Entra redirect URI must be configured before switching to it.
 
 ## Architecture
 
@@ -52,9 +52,9 @@ The infrastructure definitions in [`infra/terraform/`](./infra/terraform/) and [
 - An Azure Container Apps environment, an externally reachable `docmanager` API, internal `extraction` and `search` apps, a worker `orchestrator`, and internal RabbitMQ.
 - Azure Database for PostgreSQL Flexible Server with separate databases for the API, orchestration, extraction, and search. The server enables the `vector` and `pg_trgm` extensions.
 - An Azure Storage account with a private `documents` container; public Blob access and shared-key access are disabled.
-- Azure Static Web Apps, Log Analytics, and an Azure DNS public zone for `dms-documenta.com`.
+- Azure Static Web Apps, Log Analytics, and an Azure DNS public zone for `giddyitsolutions.com`.
 
-The DNS zone is the parent domain. The Static Web App custom hostname is `dwebapp.dms-documenta.com`. The IaC outputs the zone's assigned name servers; after delegation, add the subdomain through **Static Web App → Custom domains → Add → Custom domain on Azure DNS**, selecting the `dms-documenta.com` zone and entering `dwebapp`. Azure creates the CNAME and provisions HTTPS. The API CORS configuration allows both the generated Static Web Apps hostname and the custom hostname.
+The Static Web App custom hostname `documenta.giddyitsolutions.com` is attached by both Terraform and Bicep using CNAME-delegation validation. The IaC also creates an Azure DNS zone and outputs its name servers, but the domain is currently hosted outside Azure DNS. Until the parent domain is delegated to those name servers, create a CNAME record named `documenta` in the active DNS provider pointing to the Static Web App's default hostname. Azure must be able to resolve that CNAME during custom-domain validation; HTTPS is provisioned after validation. The API CORS configuration allows both the generated Static Web Apps hostname and the custom hostname.
 
 The PostgreSQL server currently has public network access enabled with the Azure-services firewall rule. Restricting database access through private networking is a production-hardening item.
 
@@ -183,7 +183,7 @@ terraform fmt -check -recursive
 ## Known gaps and follow-up work
 
 - **PDF conversion in Azure:** the API currently invokes LibreOffice and Ghostscript through a local executable or container runtime. The backend deployment workflow does not enable `WITH_OFFICE_TOOLS`, and the Container Apps IaC does not deploy a container runtime or veraPDF REST service. Configure these dependencies before relying on Office-to-PDF or PDF/A processing in the cloud.
-- **Custom-domain cutover:** the intended hostname is `dwebapp.dms-documenta.com`. Complete DNS delegation and Static Web Apps domain validation, then set the Entra SPA redirect URI and GitHub `SPA_REDIRECT_URI` to `https://dwebapp.dms-documenta.com`.
+- **Custom-domain cutover:** the intended hostname is `documenta.giddyitsolutions.com`. Point its CNAME at the Static Web Apps default hostname and complete Static Web Apps domain validation, then set the Entra SPA redirect URI and GitHub `SPA_REDIRECT_URI` to `https://documenta.giddyitsolutions.com`.
 - **PostgreSQL networking:** the current server is publicly reachable through its Azure-services firewall rule. Prefer private networking and narrower access controls for hardened production deployments.
 - **Revision indexing:** saving a revision does not automatically trigger re-extraction or re-indexing.
 - **Legacy ownership:** documents created before tenant ownership was added need trusted ownership mapping before they can be accessed.
