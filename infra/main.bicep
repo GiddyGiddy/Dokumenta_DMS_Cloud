@@ -11,6 +11,12 @@ param location string = resourceGroup().location
 @allowed(['westeurope', 'westus2', 'centralus', 'eastus2', 'eastasia'])
 param staticWebAppLocation string = 'westeurope'
 
+@description('Registered parent domain for the Azure DNS public zone.')
+param dnsZoneName string = 'dms-documenta.com'
+
+@description('Custom hostname to use for the Static Web App.')
+param swaCustomDomain string = 'dwebapp.dms-documenta.com'
+
 @description('false = infra only (ACR, DB, env, RabbitMQ). Build/push images, then redeploy with true.')
 param deployApps bool = false
 
@@ -248,6 +254,7 @@ resource docmanager 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
           { name: 'BlobStorage__AccountUrl', value: storage.properties.primaryEndpoints.blob }
           { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
           { name: 'Cors__AllowedOrigins__0', value: 'https://${swa.properties.defaultHostname}' }
+          { name: 'Cors__AllowedOrigins__1', value: 'https://${swaCustomDomain}' }
           { name: 'Database__MigrateOnStartup', value: 'true' }
         ])
       }]
@@ -385,9 +392,17 @@ resource swa 'Microsoft.Web/staticSites@2023-12-01' = {
   properties: {}
 }
 
+resource dnsZone 'Microsoft.Network/dnsZones@2018-05-01' = {
+  name: dnsZoneName
+  location: 'global'
+}
+
 output acrName string = acr.name
 output acrLoginServer string = acr.properties.loginServer
 output postgresHost string = pgHost
 output staticWebAppName string = swa.name
 output staticWebAppUrl string = 'https://${swa.properties.defaultHostname}'
+output staticWebAppCustomDomain string = swaCustomDomain
+output staticWebAppDnsZoneName string = dnsZoneName
+output staticWebAppDnsNameServers array = dnsZone.properties.nameServers
 output apiUrl string = deployApps ? 'https://${docmanager!.properties.configuration.ingress.fqdn}' : ''
