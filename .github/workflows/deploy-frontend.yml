@@ -49,9 +49,12 @@ jobs:
           skip_api_build: true
 
       - name: Smoke test
+        env:
+          # Default SWA hostname: independent of custom-domain DNS/TLS state.
+          SMOKE_URL: ${{ vars.SWA_DEFAULT_URL || 'https://zealous-water-0bf079110.2.azurestaticapps.net' }}
         run: |
           for i in $(seq 1 10); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.SPA_REDIRECT_URI || 'https://documenta.giddyitsolutions.com' }}/")
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$SMOKE_URL/")
             echo "status=$code"
             if [ "$code" = "200" ]; then exit 0; fi
             sleep 6
