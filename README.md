@@ -12,44 +12,20 @@ The production architecture is hosted on Azure:
 - **Identity:** Microsoft Entra ID using OIDC, bearer tokens, and application roles.
 - **Delivery:** GitHub Actions builds and deploys the frontend and backend; Terraform provisions Azure resources. Bicep is also provided as an alternative IaC definition.
 
-The checked-in frontend environment currently points to the generated Static Web Apps host and the `docmanager` Container App API:
+The checked-in frontend environment currently points to the generated Static Web Apps host and the `docmanager` Container App API.
 
-- Static Web App: `https://zealous-water-0bf079110.2.azurestaticapps.net`
-- API: `https://docmanager.blackdune-d31605d8.swedencentral.azurecontainerapps.io/api`
+The production frontend workflow takes `API_URL` and `SPA_REDIRECT_URI` from the GitHub Actions environment, so those values determine the deployed frontend configuration. 
 
-The production frontend workflow takes `API_URL` and `SPA_REDIRECT_URI` from the GitHub Actions environment, so those values determine the deployed frontend configuration. The intended custom frontend hostname is `https://documenta.giddyitsolutions.com`. DNS, Static Web Apps domain validation, and the Entra redirect URI must be configured before switching to it.
+## Solution Architecture
 
-## Architecture
-
-```mermaid
-flowchart LR
-  User[User browser] --> SPA[Angular SPA<br/>Azure Static Web Apps]
-  SPA -->|OIDC sign-in| Entra[Microsoft Entra ID]
-  User --> API[DocuManagementApp<br/>Container Apps external ingress]
-
-  API -->|metadata, outbox, revisions| PG[(Azure PostgreSQL<br/>four service databases)]
-  API -->|managed identity| Blob[(Private Azure Blob Storage)]
-  API -->|transactional outbox| MQ{{RabbitMQ<br/>internal Container App}}
-
-  MQ --> ORC[OrchestratorService<br/>internal worker]
-  ORC -->|extraction request| MQ
-  MQ --> EXT[ExtractionService<br/>internal Container App]
-  EXT --> DI[Azure Document Intelligence]
-  EXT --> LLM[Gemini API]
-  EXT -->|artifacts and index requests| MQ
-  MQ --> SEARCH[SearchService<br/>internal Container App]
-  SEARCH --> PG
-  SEARCH --> EMB[OpenAI embeddings]
-  SEARCH --> AGENT[Azure OpenAI<br/>agentic search]
-  API -->|internal search proxy| SEARCH
-```
+![Dokumenta DMS Cloud solution architecture using Azure icons](./docs/solution-architecture.svg)
 
 ### Azure resources
 
 The infrastructure definitions in [`infra/terraform/`](./infra/terraform/) and [`infra/main.bicep`](./infra/main.bicep) provision or configure:
 
 - Azure Container Registry and a user-assigned managed identity for image pulls and Blob Storage access.
-- An Azure Container Apps environment, an externally reachable `docmanager` API, internal `extraction` and `search` apps, a worker `orchestrator`, and internal RabbitMQ.
+- An Azure Container Apps environment, an externally reachable `docmanager` API, internal `extraction` and `search` apps, a worker `orchestrator`, internal RabbitMQ, and an internal `verapdf` validator app.
 - Azure Database for PostgreSQL Flexible Server with separate databases for the API, orchestration, extraction, and search. The server enables the `vector` and `pg_trgm` extensions.
 - An Azure Storage account with a private `documents` container; public Blob access and shared-key access are disabled.
 - Azure Static Web Apps, Log Analytics, and an Azure DNS public zone for `giddyitsolutions.com`.
@@ -62,12 +38,12 @@ The PostgreSQL server currently has public network access enabled with the Azure
 
 | Service | Azure runtime | Responsibility | Database |
 |---|---|---|---|
-| `DocuManagementApp` | Public Azure Container App API | Entra authentication and role checks; tenant-scoped upload, listing, downloads, storage, revisions, and search proxy. | `documanagementdb` |
+| `DocuManagementApp` | Public Azure Container App API | Entra authentication and role checks; tenant-scoped upload, listing, downloads, storage, revisions, search proxy, and Office-to-PDF / PDF/A conversion (image built with LibreOffice and Ghostscript; sized at 1 vCPU / 2 GiB). | `documanagementdb` |
 | `OrchestratorService` | Background worker, no external ingress | Consumes document-ingested events, classifies known document types using metadata, and dispatches extraction jobs. It does not use an LLM to route documents. | `orchestratordb` |
 | `ExtractionService` | Internal Azure Container App | Retrieves document content through the API, runs layout and model extraction, validates results, and publishes artifacts and indexing requests. | `extractiondb` |
 | `SearchService` | Internal Azure Container App | Consumes indexing requests, chunks and embeds artifacts, and serves deterministic, hybrid, and agentic search to the API. | `searchdb` |
 
-RabbitMQ is an internal Container App used for the asynchronous event flow. The API is the only backend service with public ingress; service-to-service calls use internal endpoints and configured API keys.
+RabbitMQ is an internal Container App used for the asynchronous event flow. `verapdf` (the `verapdf/rest` image) is an internal Container App that independently validates PDF/A output for the API. The API is the only backend service with public ingress; service-to-service calls use internal endpoints and configured API keys.
 
 ## Application capabilities
 
@@ -76,8 +52,8 @@ RabbitMQ is an internal Container App used for the asynchronous event flow. The 
 - **Revisions:** view revision history, save edited revisions, and restore earlier versions.
 - **Asynchronous processing:** transactional outboxes and RabbitMQ queues decouple ingestion, orchestration, extraction, and indexing.
 - **Classification and extraction:** rule-based classification routes known document types. Azure Document Intelligence produces layout text; an LLM can classify unknown document kinds and extract or correct structured data with validators.
-- **Search:** deterministic filters, hybrid semantic search, and optional agentic search. Search chunks and vectors are stored in PostgreSQL rather than Azure AI Search.
-- **PDF workflows:** API endpoints exist for Office-to-PDF conversion and PDF/A conversion and validation. Their cloud runtime dependencies are not fully provisioned yet; see [Known gaps](#known-gaps-and-follow-up-work).
+- **Search:** deterministic filters, hybrid semantic search, and optional agentic search. Search chunks and vectors are stored in PostgreSQL rather than Azure AI Search. The UI lists each matching source document once (best-scoring hit) with links to open the original or edit it in the revision review; chunk text is not shown.
+- **PDF workflows:** Office-to-PDF uses LibreOffice and PDF/A-2b conversion uses Ghostscript, both installed in the `docmanager` image (`WITH_OFFICE_TOOLS=true`, set by `deploy-backend.yml`). Output is only accepted when the `verapdf` app reports compliance. Locally, the services fall back to a Podman/Docker container if the tools are not installed; see [PDF-A-SETUP.md](./DocuManagementApp/PDF-A-SETUP.md).
 
 ## Tenant isolation and authorization
 
@@ -103,25 +79,7 @@ Keep all API keys and passwords in GitHub Actions secrets, Azure Container App s
 
 The system keeps deterministic decisions in application code and uses LLM agents for language understanding. Agent output is treated as a proposal: extraction results pass through validation, and the search agent can only call a constrained read-only search tool.
 
-```mermaid
-flowchart TD
-  ING[Document ingested] --> ORC[Deterministic orchestration]
-  ORC --> JOB[Extraction job]
-  JOB --> DI[Azure Document Intelligence layout]
-  DI --> KIND{Known document kind?}
-  KIND -- No --> CLS[Classifier agent]
-  KIND -- Yes --> EXTRACT[Extraction agent]
-  CLS --> EXTRACT
-  EXTRACT --> VALIDATE[Validate structured result]
-  VALIDATE -->|Issues remain| CORRECT[Correction agent]
-  CORRECT --> VALIDATE
-  VALIDATE -->|Valid or attempts exhausted| RESULT[Store result and publish index request]
-  QUESTION[User question] --> SEARCH_AGENT[Search agent]
-  SEARCH_AGENT --> TOOL[execute_hybrid_search]
-  TOOL --> SEARCH_INDEX[Tenant-scoped PostgreSQL search]
-  SEARCH_INDEX --> SEARCH_AGENT
-  SEARCH_AGENT --> ANSWER[Grounded answer with citations]
-```
+![Agentic AI: extraction agents and agentic search](./docs/agentic-ai.svg)
 
 ### Extraction agents
 
@@ -152,7 +110,7 @@ GitHub Actions workflows are under [`.github/workflows/`](./.github/workflows/):
 
 - `ci.yml` restores and builds the .NET solution, runs backend tests, builds the Angular production bundle, and checks Terraform formatting and validity.
 - `terraform.yml` plans infrastructure changes for pull requests and applies infrastructure from the production workflow for main-branch changes or manual runs. It authenticates to Azure using GitHub OIDC.
-- `deploy-backend.yml` builds service images in Azure Container Registry, updates the Container Apps, and waits for healthy revisions.
+- `deploy-backend.yml` builds service images in Azure Container Registry (the `docmanager` image includes the Office/PDF tools), updates the Container Apps, and waits for healthy revisions.
 - `deploy-frontend.yml` builds Angular with the configured API URL and SPA redirect URI, deploys to Static Web Apps, and performs a smoke test.
 
 Use **either Terraform or Bicep** to manage a given environment, not both against the same resources. Terraform uses an Azure Storage remote state backend with Entra authentication.
@@ -182,9 +140,8 @@ terraform fmt -check -recursive
 
 ## Known gaps and follow-up work
 
-- **PDF conversion in Azure:** the API currently invokes LibreOffice and Ghostscript through a local executable or container runtime. The backend deployment workflow does not enable `WITH_OFFICE_TOOLS`, and the Container Apps IaC does not deploy a container runtime or veraPDF REST service. Configure these dependencies before relying on Office-to-PDF or PDF/A processing in the cloud.
-- **Custom-domain cutover:** the intended hostname is `documenta.giddyitsolutions.com`. Point its CNAME at the Static Web Apps default hostname and complete Static Web Apps domain validation, then set the Entra SPA redirect URI and GitHub `SPA_REDIRECT_URI` to `https://documenta.giddyitsolutions.com`.
+
 - **PostgreSQL networking:** the current server is publicly reachable through its Azure-services firewall rule. Prefer private networking and narrower access controls for hardened production deployments.
 - **Revision indexing:** saving a revision does not automatically trigger re-extraction or re-indexing.
 - **Legacy ownership:** documents created before tenant ownership was added need trusted ownership mapping before they can be accessed.
-- **Optional agentic search:** the Azure OpenAI key must be configured for Terraform before agentic search is enabled; deterministic and hybrid search remain separate endpoints.
+
