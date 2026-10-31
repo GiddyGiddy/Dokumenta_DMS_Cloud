@@ -90,6 +90,8 @@ public sealed class GhostscriptVeraPdfAProcessingService : IPdfAProcessingServic
     private readonly ILogger<GhostscriptVeraPdfAProcessingService> _logger;
     private readonly string _containerRuntimeExecutablePath;
     private readonly string _ghostscriptImage;
+    private readonly string? _nativeGhostscriptPath;
+    private readonly string _nativeIccProfilePath;
     private readonly Uri _veraPdfRestBaseUri;
     private readonly TimeSpan _timeout;
 
@@ -107,6 +109,16 @@ public sealed class GhostscriptVeraPdfAProcessingService : IPdfAProcessingServic
             ? (OperatingSystem.IsWindows() ? "podman.exe" : "podman")
             : configuredContainerRuntime;
         _ghostscriptImage = configuration["PdfA:GhostscriptImage"] ?? "docker.io/minidocks/ghostscript:latest";
+        // Native Ghostscript (e.g. inside the Container Apps image) avoids needing a container runtime.
+        var configuredGhostscript = configuration["PdfA:GhostscriptExecutablePath"];
+        _nativeGhostscriptPath = !string.IsNullOrWhiteSpace(configuredGhostscript)
+            ? configuredGhostscript
+            : (OperatingSystem.IsWindows() ? null : (File.Exists("/usr/bin/gs") ? "/usr/bin/gs" : null));
+        var configuredIcc = configuration["PdfA:IccProfilePath"];
+        _nativeIccProfilePath = !string.IsNullOrWhiteSpace(configuredIcc)
+            ? configuredIcc
+            : new[] { "/usr/share/color/icc/ghostscript/default_rgb.icc", "/usr/share/ghostscript/iccprofiles/default_rgb.icc" }
+                .FirstOrDefault(File.Exists) ?? ContainerIccProfilePath;
         var veraPdfRestBaseUrl = configuration["PdfA:VeraPdfRestBaseUrl"] ?? "http://localhost:8080";
         if (!Uri.TryCreate(veraPdfRestBaseUrl, UriKind.Absolute, out var veraPdfRestBaseUri))
         {
@@ -143,9 +155,21 @@ public sealed class GhostscriptVeraPdfAProcessingService : IPdfAProcessingServic
 
         try
         {
-            await File.WriteAllTextAsync(definitionPath, CreatePdfaDefinition(ContainerIccProfilePath), cancellationToken);
+            var native = _nativeGhostscriptPath is not null;
+            var iccPath = native ? _nativeIccProfilePath : ContainerIccProfilePath;
+            await File.WriteAllTextAsync(definitionPath, CreatePdfaDefinition(iccPath), cancellationToken);
 
-            var ghostscriptArguments = new[]
+            var ghostscriptArguments = native
+                ? new[]
+                {
+                    "-dPDFA=2", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=pdfwrite",
+                    "-dPDFACompatibilityPolicy=1", "-sColorConversionStrategy=RGB", "-sProcessColorModel=DeviceRGB",
+                    "-dEmbedAllFonts=true", "-dSubsetFonts=true",
+                    $"-sOutputICCProfile={iccPath}",
+                    $"-sOutputFile={candidatePdfPath}",
+                    "-f", definitionPath, Path.GetFullPath(sourcePdfPath)
+                }
+                : new[]
             {
                 "run",
                 "--rm",
@@ -172,7 +196,7 @@ public sealed class GhostscriptVeraPdfAProcessingService : IPdfAProcessingServic
             };
 
             var conversion = await _processRunner.RunAsync(
-                _containerRuntimeExecutablePath,
+                _nativeGhostscriptPath ?? _containerRuntimeExecutablePath,
                 ghostscriptArguments,
                 _timeout,
                 cancellationToken);
