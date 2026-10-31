@@ -66,4 +66,21 @@ describe('App', () => {
     expect(compiled.querySelector('#search')).toBeTruthy();
     expect(compiled.querySelector('.agent-answer')?.textContent).toContain('Found an agreement.');
   });
+
+  it('lists each source document once, keeping its best hit', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as unknown as {
+      finishWithResults(results: unknown[]): void;
+      searchResults: { documentId: string; score: number | null }[];
+    };
+    const hit = (documentId: string, score: number | null) => ({
+      documentId, documentKind: 'Vertrag', entityName: '', documentDate: null, text: 'chunk', score,
+      citation: { documentId, sourceUrl: '', pageNumber: 1, boundingBox: null },
+    });
+
+    app.finishWithResults([hit('a', 0.2), hit('b', 0.5), hit('a', 0.9)]);
+
+    expect(app.searchResults.map(r => r.documentId)).toEqual(['a', 'b']);
+    expect(app.searchResults[0].score).toBe(0.9);
+  });
 });

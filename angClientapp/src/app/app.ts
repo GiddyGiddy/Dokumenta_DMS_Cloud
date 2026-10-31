@@ -42,7 +42,7 @@ export class App {
     const popup = window.open('', '_blank');
     this.fileUploadService.fetchFile(result.documentId).subscribe({
       next: (blob) => {
-        const url = `${URL.createObjectURL(blob)}#page=${result.citation.pageNumber}`;
+        const url = URL.createObjectURL(blob);
         if (popup) {
           popup.location.href = url;
         } else {
@@ -92,7 +92,7 @@ export class App {
       this.searchApi.agentic(question).subscribe({
         next: (response: AgenticSearchResponse) => {
           this.agenticAnswer = response.answer;
-          this.searchResults = response.sources ?? [];
+          this.searchResults = this.uniqueDocuments(response.sources ?? []);
           this.isSearching = false;
           this.changeDetector.markForCheck();
         },
@@ -131,8 +131,20 @@ export class App {
     };
   }
 
+  // The index returns one hit per chunk; the UI lists each source document once, keeping its best hit.
+  private uniqueDocuments(results: SearchResult[]): SearchResult[] {
+    const best = new Map<string, SearchResult>();
+    for (const result of results) {
+      const current = best.get(result.documentId);
+      if (!current || (result.score ?? 0) > (current.score ?? 0)) {
+        best.set(result.documentId, result);
+      }
+    }
+    return [...best.values()];
+  }
+
   private finishWithResults(results: SearchResult[]): void {
-    this.searchResults = results;
+    this.searchResults = this.uniqueDocuments(results);
     this.isSearching = false;
     this.changeDetector.markForCheck();
   }
