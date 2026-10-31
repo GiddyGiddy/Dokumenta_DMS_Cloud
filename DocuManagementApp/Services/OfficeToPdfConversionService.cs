@@ -126,6 +126,10 @@ namespace DocuManagementApp.Services
         RedirectStandardOutput = true,
         RedirectStandardError = true
       };
+      // The non-root container user has no writable home; give LibreOffice its own profile dir.
+      var profileDir = Path.Combine(Path.GetTempPath(), "lo-profile-" + Guid.NewGuid().ToString("N"));
+      startInfo.Environment["HOME"] = Path.GetTempPath();
+      startInfo.ArgumentList.Add($"-env:UserInstallation={new Uri(profileDir).AbsoluteUri}");
       startInfo.ArgumentList.Add("--headless");
       startInfo.ArgumentList.Add("--norestore");
       startInfo.ArgumentList.Add("--convert-to");
