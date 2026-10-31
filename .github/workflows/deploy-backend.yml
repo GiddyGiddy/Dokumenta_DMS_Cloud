@@ -50,6 +50,7 @@ jobs:
           az acr build -r "${{ vars.ACR_NAME }}" \
             -f Dockerfile.service \
             --build-arg PROJECT=${{ matrix.project }} \
+            --build-arg WITH_OFFICE_TOOLS=${{ matrix.app == 'docmanager' && 'true' || 'false' }} \
             -t "${{ matrix.app }}:${{ github.sha }}" \
             .
 

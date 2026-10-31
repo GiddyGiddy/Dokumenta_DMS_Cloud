@@ -60,7 +60,7 @@ locals {
   # Per app: sizing, ingress mode (none/internal/external), secrets and environment variables.
   apps = var.deploy_apps ? {
     docmanager = {
-      cpu = 0.5, memory = "1Gi", min = 1, max = 2, ingress = "external"
+      cpu = 1.0, memory = "2Gi", min = 1, max = 2, ingress = "external"
       secrets = merge(local.rabbit_secret, {
         "db"           = local.pg_conn["documanagementdb"]
         "download-key" = var.download_api_key
@@ -78,6 +78,8 @@ locals {
         { name = "Cors__AllowedOrigins__0", value = "https://${azurerm_static_web_app.web.default_host_name}", secret = null },
         { name = "Cors__AllowedOrigins__1", value = "https://${var.swa_custom_domain}", secret = null },
         { name = "Database__MigrateOnStartup", value = "true", secret = null },
+        { name = "PdfA__VeraPdfRestBaseUrl", value = "http://verapdf", secret = null },
+        { name = "PdfA__TimeoutSeconds", value = "300", secret = null },
       ])
     }
     orchestrator = {
@@ -290,6 +292,34 @@ resource "azurerm_container_app" "rabbit" {
         name        = "RABBITMQ_DEFAULT_PASS"
         secret_name = "rabbit-pass"
       }
+    }
+  }
+}
+
+resource "azurerm_container_app" "verapdf" {
+  name                         = "verapdf"
+  container_app_environment_id = azurerm_container_app_environment.env.id
+  resource_group_name          = data.azurerm_resource_group.rg.name
+  revision_mode                = "Single"
+
+  ingress {
+    external_enabled = false
+    transport        = "http"
+    target_port      = 8080
+    traffic_weight {
+      latest_revision = true
+      percentage      = 100
+    }
+  }
+
+  template {
+    min_replicas = 1
+    max_replicas = 1
+    container {
+      name   = "verapdf"
+      image  = "docker.io/verapdf/rest:latest"
+      cpu    = 0.5
+      memory = "1Gi"
     }
   }
 }
