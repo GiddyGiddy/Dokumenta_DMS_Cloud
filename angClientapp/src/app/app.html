@@ -432,11 +432,11 @@
         @if (searchResults.length > 0) {
           <section class="results-section" aria-labelledby="results-heading">
             <div class="results-heading-row">
-              <h3 id="results-heading">Quellen und Treffer</h3>
-              <span>{{ searchResults.length }} Treffer</span>
+              <h3 id="results-heading">Quelldokumente</h3>
+              <span>{{ searchResults.length }} Dokumente</span>
             </div>
             <ol class="search-results">
-              @for (result of searchResults; track result.documentId + ':' + result.citation.pageNumber + ':' + $index) {
+              @for (result of searchResults; track result.documentId) {
                 <li class="search-result">
                   <div class="result-meta">
                     <span class="result-kind">{{ result.documentKind }}</span>
@@ -444,17 +444,16 @@
                     @if (result.documentDate) { <time>{{ result.documentDate }}</time> }
                     @if (result.score !== null) { <span>Relevanz {{ result.score | number:'1.0-2' }}</span> }
                   </div>
-                  <p class="result-text">{{ result.text }}</p>
                   <a class="citation-link" [href]="result.citation.sourceUrl" (click)="openOriginal($event, result)" target="_blank" rel="noopener noreferrer">
-                    Seite {{ result.citation.pageNumber }} im Original öffnen <span aria-hidden="true">↗</span>
+                    Dokument öffnen <span aria-hidden="true">↗</span>
                   </a>
-                  <a class="citation-link" [routerLink]="['/documents', result.documentId, 'revisions']">Verlauf / Bearbeiten</a>
+                  <a class="citation-link" [routerLink]="['/documents', result.documentId, 'revisions']">Im Review bearbeiten</a>
                 </li>
               }
             </ol>
           </section>
         } @else if (hasSearched && !isSearching && !searchError && !agenticAnswer) {
-          <p class="empty-results" role="status">Keine passenden Dokumentstellen gefunden.</p>
+          <p class="empty-results" role="status">Keine passenden Dokumente gefunden.</p>
         }
       </div>
     </div>
