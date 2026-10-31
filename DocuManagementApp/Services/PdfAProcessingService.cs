@@ -164,6 +164,8 @@ public sealed class GhostscriptVeraPdfAProcessingService : IPdfAProcessingServic
                 {
                     "-dPDFA=2", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=pdfwrite",
                     "-dPDFACompatibilityPolicy=1", "-sColorConversionStrategy=RGB", "-sProcessColorModel=DeviceRGB",
+                    $"--permit-file-read={iccPath}",
+                    $"--permit-file-read={definitionPath}",
                     "-dEmbedAllFonts=true", "-dSubsetFonts=true",
                     $"-sOutputICCProfile={iccPath}",
                     $"-sOutputFile={candidatePdfPath}",
