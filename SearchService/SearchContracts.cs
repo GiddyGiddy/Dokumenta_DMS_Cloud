@@ -9,7 +9,8 @@ public sealed record SearchIndexCommand(
     Guid TaskId,
     string DocumentKind,
     string ArtifactReference,
-    string TenantId)
+    string TenantId,
+    int RevisionNumber = 1)
 {
     public static SearchIndexCommand Parse(ReadOnlyMemory<byte> body, string? messageId)
     {
@@ -38,6 +39,11 @@ public sealed record SearchIndexCommand(
         }
 
         var tenantId = TenantIds.Require(ReadString(root, "tenantId"));
+        var revisionNumber = ReadInt32(root, "revisionNumber") ?? 1;
+        if (revisionNumber < 1)
+        {
+            throw new InvalidDataException("The search-index task has an invalid revision number.");
+        }
         return new SearchIndexCommand(
             ReadGuid(root, "eventId") ?? ParseGuid(messageId, "MessageId"),
             RequiredGuid(root, "correlationId"),
@@ -45,7 +51,8 @@ public sealed record SearchIndexCommand(
             RequiredGuid(root, "taskId"),
             ReadString(root, "documentKind") ?? "Unknown",
             artifactUri.ToString(),
-            tenantId);
+            tenantId,
+            revisionNumber);
     }
 
     private static Guid RequiredGuid(JsonElement element, string name)

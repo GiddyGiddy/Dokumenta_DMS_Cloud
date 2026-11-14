@@ -30,6 +30,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
             CREATE INDEX IF NOT EXISTS ix_document_workflows_correlation_id
                 ON document_workflows (correlation_id);
             ALTER TABLE document_workflows ADD COLUMN IF NOT EXISTS tenant_id text NULL;
+            ALTER TABLE document_workflows ADD COLUMN IF NOT EXISTS revision_number integer NOT NULL DEFAULT 1;
             CREATE TABLE IF NOT EXISTS document_tasks (
                 task_id uuid PRIMARY KEY,
                 document_id uuid NOT NULL REFERENCES document_workflows(document_id),
@@ -41,6 +42,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
             );
             CREATE INDEX IF NOT EXISTS ix_document_tasks_document_status
                 ON document_tasks (document_id, status);
+            ALTER TABLE document_tasks ADD COLUMN IF NOT EXISTS revision_number integer NOT NULL DEFAULT 1;
             CREATE TABLE IF NOT EXISTS orchestration_outbox (
                 event_id uuid PRIMARY KEY,
                 correlation_id uuid NOT NULL,
@@ -86,6 +88,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         switch (message.EventType)
         {
             case "document.ingested":
+            case "document.revised":
                 if (message.Documents.Count == 0)
                 {
                     throw new InvalidDataException("The document.ingested event contains no documents.");
@@ -202,9 +205,19 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         var kind = classifier.Classify(document.OriginalFileName, document.ContentType);
         await using var workflowCommand = new NpgsqlCommand("""
             INSERT INTO document_workflows
-                (document_id, correlation_id, original_file_name, content_type, document_kind, status, created_at_utc, updated_at_utc, tenant_id)
-            VALUES (@document_id, @correlation_id, @file_name, @content_type, @document_kind, 'Processing', @now, @now, @tenant_id)
-            ON CONFLICT (document_id) DO NOTHING
+                (document_id, correlation_id, original_file_name, content_type, document_kind, status, created_at_utc, updated_at_utc, tenant_id, revision_number)
+            VALUES (@document_id, @correlation_id, @file_name, @content_type, @document_kind, 'Processing', @now, @now, @tenant_id, @revision_number)
+            ON CONFLICT (document_id) DO UPDATE SET
+                correlation_id = EXCLUDED.correlation_id,
+                original_file_name = EXCLUDED.original_file_name,
+                content_type = EXCLUDED.content_type,
+                document_kind = EXCLUDED.document_kind,
+                tenant_id = EXCLUDED.tenant_id,
+                revision_number = EXCLUDED.revision_number,
+                status = 'Processing',
+                failure_summary = NULL,
+                updated_at_utc = EXCLUDED.updated_at_utc
+            WHERE document_workflows.revision_number < EXCLUDED.revision_number
             RETURNING document_id;
             """, connection, transaction);
         workflowCommand.Parameters.AddWithValue("tenant_id", (object?)tenantId ?? DBNull.Value);
@@ -214,12 +227,13 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         workflowCommand.Parameters.AddWithValue("content_type", document.ContentType);
         workflowCommand.Parameters.AddWithValue("document_kind", kind.ToString());
         workflowCommand.Parameters.AddWithValue("now", now);
+        workflowCommand.Parameters.AddWithValue("revision_number", document.RevisionNumber);
         if (await workflowCommand.ExecuteScalarAsync(cancellationToken) is null)
         {
             return;
         }
 
-        await AddTaskAsync(connection, transaction, correlationId, tenantId, document.DocumentId, kind, "extraction", null, now, cancellationToken);
+        await AddTaskAsync(connection, transaction, correlationId, tenantId, document.DocumentId, document.RevisionNumber, kind, "extraction", null, now, cancellationToken);
     }
 
     private static async Task CompleteTaskAsync(
@@ -237,7 +251,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
             UPDATE document_tasks
             SET status = 'Completed', output_reference = @output_reference, completed_at_utc = @now
             WHERE task_id = @task_id AND status = 'Requested'
-            RETURNING document_id, task_type;
+            RETURNING document_id, task_type, revision_number;
             """, connection, transaction);
         update.Parameters.AddWithValue("output_reference", (object?)message.OutputReference ?? DBNull.Value);
         update.Parameters.AddWithValue("now", DateTimeOffset.UtcNow);
@@ -251,19 +265,20 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
 
         var documentId = reader.GetGuid(0);
         var taskType = reader.GetString(1);
+        var revisionNumber = reader.GetInt32(2);
         await reader.CloseAsync();
 
         if (taskType == "extraction")
         {
             var workflow = await GetWorkflowAsync(connection, transaction, documentId, cancellationToken);
-            if (workflow is not null)
+            if (workflow is not null && workflow.Value.RevisionNumber == revisionNumber)
             {
                 var now = DateTimeOffset.UtcNow;
-                await AddTaskAsync(connection, transaction, workflow.Value.CorrelationId, workflow.Value.TenantId, documentId,
+                await AddTaskAsync(connection, transaction, workflow.Value.CorrelationId, workflow.Value.TenantId, documentId, revisionNumber,
                     workflow.Value.Kind, "search-index", message.OutputReference, now, cancellationToken);
                 if (workflow.Value.Kind is DocumentKind.Contract or DocumentKind.Invoice or DocumentKind.FinancialStatement)
                 {
-                    await AddTaskAsync(connection, transaction, workflow.Value.CorrelationId, workflow.Value.TenantId, documentId,
+                    await AddTaskAsync(connection, transaction, workflow.Value.CorrelationId, workflow.Value.TenantId, documentId, revisionNumber,
                         workflow.Value.Kind, "semantic-review", message.OutputReference, now, cancellationToken);
                 }
             }
@@ -286,13 +301,14 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         var now = DateTimeOffset.UtcNow;
         await using var taskCommand = new NpgsqlCommand("""
             UPDATE document_tasks SET status = 'Failed', completed_at_utc = @now
-            WHERE task_id = @task_id AND document_id = @document_id;
+            WHERE task_id = @task_id AND document_id = @document_id AND status = 'Requested'
+            RETURNING revision_number;
             """, connection, transaction);
         taskCommand.Parameters.AddWithValue("now", now);
         taskCommand.Parameters.AddWithValue("task_id", message.TaskId.Value);
         taskCommand.Parameters.AddWithValue("document_id", message.DocumentId.Value);
-        var updated = await taskCommand.ExecuteNonQueryAsync(cancellationToken);
-        if (updated == 0)
+        var failedRevision = await taskCommand.ExecuteScalarAsync(cancellationToken);
+        if (failedRevision is null)
         {
             throw new InvalidDataException("The task.failed event references an unknown task.");
         }
@@ -300,11 +316,12 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         await using var workflowCommand = new NpgsqlCommand("""
             UPDATE document_workflows
             SET status = 'Failed', failure_summary = @failure_summary, updated_at_utc = @now
-            WHERE document_id = @document_id;
+            WHERE document_id = @document_id AND revision_number = @revision_number;
             """, connection, transaction);
         workflowCommand.Parameters.AddWithValue("failure_summary", (object?)message.FailureSummary ?? "A downstream task failed.");
         workflowCommand.Parameters.AddWithValue("now", now);
         workflowCommand.Parameters.AddWithValue("document_id", message.DocumentId.Value);
+        workflowCommand.Parameters.AddWithValue("revision_number", (int)failedRevision);
         await workflowCommand.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -314,6 +331,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         Guid correlationId,
         string? tenantId,
         Guid documentId,
+        int revisionNumber,
         DocumentKind kind,
         string taskType,
         string? inputReference,
@@ -323,14 +341,15 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         var taskId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
         await using (var taskCommand = new NpgsqlCommand("""
-            INSERT INTO document_tasks (task_id, document_id, task_type, status, created_at_utc)
-            VALUES (@task_id, @document_id, @task_type, 'Requested', @now);
+            INSERT INTO document_tasks (task_id, document_id, task_type, status, created_at_utc, revision_number)
+            VALUES (@task_id, @document_id, @task_type, 'Requested', @now, @revision_number);
             """, connection, transaction))
         {
             taskCommand.Parameters.AddWithValue("task_id", taskId);
             taskCommand.Parameters.AddWithValue("document_id", documentId);
             taskCommand.Parameters.AddWithValue("task_type", taskType);
             taskCommand.Parameters.AddWithValue("now", now);
+            taskCommand.Parameters.AddWithValue("revision_number", revisionNumber);
             await taskCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -342,6 +361,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
             correlationId,
             tenantId,
             documentId,
+            revisionNumber,
             taskId,
             taskType,
             documentKind = kind.ToString(),
@@ -362,19 +382,19 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
         await outboxCommand.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task<(Guid CorrelationId, DocumentKind Kind, string? TenantId)?> GetWorkflowAsync(
+    private static async Task<(Guid CorrelationId, DocumentKind Kind, string? TenantId, int RevisionNumber)?> GetWorkflowAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid documentId,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("""
-            SELECT correlation_id, document_kind, tenant_id FROM document_workflows WHERE document_id = @document_id;
+            SELECT correlation_id, document_kind, tenant_id, revision_number FROM document_workflows WHERE document_id = @document_id FOR UPDATE;
             """, connection, transaction);
         command.Parameters.AddWithValue("document_id", documentId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
-            ? (reader.GetGuid(0), Enum.Parse<DocumentKind>(reader.GetString(1)), reader.IsDBNull(2) ? null : reader.GetString(2))
+            ? (reader.GetGuid(0), Enum.Parse<DocumentKind>(reader.GetString(1)), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetInt32(3))
             : null;
     }
 
@@ -388,7 +408,7 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
             UPDATE document_workflows
             SET status = CASE WHEN EXISTS (
                     SELECT 1 FROM document_tasks
-                    WHERE document_id = @document_id AND status <> 'Completed'
+                    WHERE document_id = @document_id AND revision_number = document_workflows.revision_number AND status <> 'Completed'
                 ) THEN 'Processing' ELSE 'Completed' END,
                 updated_at_utc = @now
             WHERE document_id = @document_id AND status <> 'Failed';

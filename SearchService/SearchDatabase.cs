@@ -47,6 +47,7 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
                 ON search_documents (tenant_id, document_kind, document_date);
             CREATE INDEX IF NOT EXISTS ix_search_documents_tenant_entity
                 ON search_documents (tenant_id, lower(entity_name));
+            ALTER TABLE search_documents ADD COLUMN IF NOT EXISTS revision_number integer NOT NULL DEFAULT 1;
             CREATE TABLE IF NOT EXISTS search_chunks (
                 tenant_id text NOT NULL,
                 document_id uuid NOT NULL,
@@ -145,13 +146,14 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
         var extracted = artifact.ExtractionResult;
         var entityName = GetEntityName(indexCommand.DocumentKind, extracted);
         var documentDate = GetDocumentDate(indexCommand.DocumentKind, extracted);
+        bool updateIndex;
         await using (var document = new NpgsqlCommand("""
             INSERT INTO search_documents
                 (tenant_id, document_id, correlation_id, document_kind, entity_name, document_date,
-                 extraction_data, artifact_reference, indexed_at_utc)
+                 extraction_data, artifact_reference, indexed_at_utc, revision_number)
             VALUES
                 (@tenant_id, @document_id, @correlation_id, @document_kind, @entity_name, @document_date,
-                 @extraction_data, @artifact_reference, @indexed_at)
+                 @extraction_data, @artifact_reference, @indexed_at, @revision_number)
             ON CONFLICT (tenant_id, document_id) DO UPDATE SET
                 correlation_id = EXCLUDED.correlation_id,
                 document_kind = EXCLUDED.document_kind,
@@ -159,7 +161,10 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
                 document_date = EXCLUDED.document_date,
                 extraction_data = EXCLUDED.extraction_data,
                 artifact_reference = EXCLUDED.artifact_reference,
-                indexed_at_utc = EXCLUDED.indexed_at_utc;
+                indexed_at_utc = EXCLUDED.indexed_at_utc,
+                revision_number = EXCLUDED.revision_number
+            WHERE search_documents.revision_number <= EXCLUDED.revision_number
+            RETURNING document_id;
             """, connection, transaction))
         {
             document.Parameters.AddWithValue("tenant_id", tenantId);
@@ -174,37 +179,41 @@ public sealed class SearchDatabase(NpgsqlDataSource dataSource, SearchOptions op
             document.Parameters.AddWithValue("extraction_data", NpgsqlDbType.Jsonb, extracted.GetRawText());
             document.Parameters.AddWithValue("artifact_reference", indexCommand.ArtifactReference);
             document.Parameters.AddWithValue("indexed_at", DateTimeOffset.UtcNow);
-            await document.ExecuteNonQueryAsync(cancellationToken);
+            document.Parameters.AddWithValue("revision_number", indexCommand.RevisionNumber);
+            updateIndex = await document.ExecuteScalarAsync(cancellationToken) is not null;
         }
 
-        await using (var deleteChunks = new NpgsqlCommand("""
-            DELETE FROM search_chunks WHERE tenant_id = @tenant_id AND document_id = @document_id;
-            """, connection, transaction))
+        if (updateIndex)
         {
-            deleteChunks.Parameters.AddWithValue("tenant_id", tenantId);
-            deleteChunks.Parameters.AddWithValue("document_id", indexCommand.DocumentId);
-            await deleteChunks.ExecuteNonQueryAsync(cancellationToken);
-        }
+            await using (var deleteChunks = new NpgsqlCommand("""
+                DELETE FROM search_chunks WHERE tenant_id = @tenant_id AND document_id = @document_id;
+                """, connection, transaction))
+            {
+                deleteChunks.Parameters.AddWithValue("tenant_id", tenantId);
+                deleteChunks.Parameters.AddWithValue("document_id", indexCommand.DocumentId);
+                await deleteChunks.ExecuteNonQueryAsync(cancellationToken);
+            }
 
-        for (var index = 0; index < chunks.Count; index++)
-        {
-            var chunk = chunks[index];
-            var vectorText = embeddings is null ? null : FormatVector(embeddings[index]);
-            await using var insertChunk = new NpgsqlCommand("""
-                INSERT INTO search_chunks
-                    (tenant_id, document_id, chunk_index, chunk_text, page_number, bounding_box, embedding)
-                VALUES
-                    (@tenant_id, @document_id, @chunk_index, @chunk_text, @page_number, @bounding_box, @embedding::vector);
-                """, connection, transaction);
-            insertChunk.Parameters.AddWithValue("tenant_id", tenantId);
-            insertChunk.Parameters.AddWithValue("document_id", indexCommand.DocumentId);
-            insertChunk.Parameters.AddWithValue("chunk_index", chunk.ChunkIndex);
-            insertChunk.Parameters.AddWithValue("chunk_text", chunk.Text);
-            insertChunk.Parameters.AddWithValue("page_number", chunk.PageNumber);
-            insertChunk.Parameters.AddWithValue("bounding_box", NpgsqlDbType.Jsonb,
-                (object?)chunk.BoundingBox?.GetRawText() ?? DBNull.Value);
-            insertChunk.Parameters.AddWithValue("embedding", (object?)vectorText ?? DBNull.Value);
-            await insertChunk.ExecuteNonQueryAsync(cancellationToken);
+            for (var index = 0; index < chunks.Count; index++)
+            {
+                var chunk = chunks[index];
+                var vectorText = embeddings is null ? null : FormatVector(embeddings[index]);
+                await using var insertChunk = new NpgsqlCommand("""
+                    INSERT INTO search_chunks
+                        (tenant_id, document_id, chunk_index, chunk_text, page_number, bounding_box, embedding)
+                    VALUES
+                        (@tenant_id, @document_id, @chunk_index, @chunk_text, @page_number, @bounding_box, @embedding::vector);
+                    """, connection, transaction);
+                insertChunk.Parameters.AddWithValue("tenant_id", tenantId);
+                insertChunk.Parameters.AddWithValue("document_id", indexCommand.DocumentId);
+                insertChunk.Parameters.AddWithValue("chunk_index", chunk.ChunkIndex);
+                insertChunk.Parameters.AddWithValue("chunk_text", chunk.Text);
+                insertChunk.Parameters.AddWithValue("page_number", chunk.PageNumber);
+                insertChunk.Parameters.AddWithValue("bounding_box", NpgsqlDbType.Jsonb,
+                    (object?)chunk.BoundingBox?.GetRawText() ?? DBNull.Value);
+                insertChunk.Parameters.AddWithValue("embedding", (object?)vectorText ?? DBNull.Value);
+                await insertChunk.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
 
         var completionEventId = Guid.NewGuid();

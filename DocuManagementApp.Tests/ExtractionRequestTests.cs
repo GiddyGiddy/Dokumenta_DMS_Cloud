@@ -24,7 +24,8 @@ public sealed class ExtractionRequestTests
               "tenantId": "tenant:{{Guid.NewGuid():D}}",
               "taskType": "extraction",
               "documentKind": "Pdf",
-              "inputReference": null
+              "inputReference": null,
+              "revisionNumber": 3
             }
             """;
 
@@ -37,6 +38,7 @@ public sealed class ExtractionRequestTests
         Assert.StartsWith("tenant:", request.TenantId);
         Assert.Equal("Pdf", request.DocumentKind);
         Assert.Null(request.InputReference);
+        Assert.Equal(3, request.RevisionNumber);
         Assert.Contains("document.task.requested", request.RawPayload);
     }
 
@@ -95,9 +97,9 @@ public sealed class ExtractionRequestTests
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5176/") };
         var client = new DocumentContentApiClient(httpClient);
 
-        var document = await client.GetAsync(documentId, tenantId, CancellationToken.None);
+        var document = await client.GetAsync(documentId, tenantId, 3, CancellationToken.None);
 
-        Assert.Equal($"api/fileupload/service-download/{documentId:D}", capturedRequest?.RequestUri?.PathAndQuery.TrimStart('/'));
+        Assert.Equal($"api/documents/{documentId:D}/revisions/3/service-content", capturedRequest?.RequestUri?.PathAndQuery.TrimStart('/'));
         Assert.Equal(tenantId, capturedRequest?.Headers.GetValues("X-Tenant-Id").Single());
         Assert.Equal("application/pdf", document.ContentType);
         Assert.Equal(new byte[] { 1, 2, 3 }, document.Bytes);

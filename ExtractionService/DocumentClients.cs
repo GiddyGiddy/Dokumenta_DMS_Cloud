@@ -26,15 +26,15 @@ public sealed record DocumentLayoutResult(string Markdown, string RawJson);
 
 public interface IDocumentContentClient
 {
-    Task<DocumentContent> GetAsync(Guid documentId, string tenantId, CancellationToken cancellationToken);
+    Task<DocumentContent> GetAsync(Guid documentId, string tenantId, int revisionNumber, CancellationToken cancellationToken);
 }
 
 public sealed class DocumentContentApiClient(HttpClient httpClient) : IDocumentContentClient
 {
-    public async Task<DocumentContent> GetAsync(Guid documentId, string tenantId, CancellationToken cancellationToken)
+    public async Task<DocumentContent> GetAsync(Guid documentId, string tenantId, int revisionNumber, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
-        var relativeUri = $"api/fileupload/service-download/{documentId:D}";
+        var relativeUri = $"api/documents/{documentId:D}/revisions/{revisionNumber}/service-content";
         using var request = new HttpRequestMessage(HttpMethod.Get, relativeUri);
         request.Headers.TryAddWithoutValidation("X-Tenant-Id", tenantId);
         using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);

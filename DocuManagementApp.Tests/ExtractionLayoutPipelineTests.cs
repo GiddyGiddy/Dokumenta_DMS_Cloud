@@ -150,7 +150,7 @@ public sealed class ExtractionLayoutPipelineTests
 
     private sealed class FakeContentClient : IDocumentContentClient
     {
-        public Task<DocumentContent> GetAsync(Guid documentId, string tenantId, CancellationToken cancellationToken)
+        public Task<DocumentContent> GetAsync(Guid documentId, string tenantId, int revisionNumber, CancellationToken cancellationToken)
         {
             return Task.FromResult(new DocumentContent([1, 2, 3], "application/pdf"));
         }

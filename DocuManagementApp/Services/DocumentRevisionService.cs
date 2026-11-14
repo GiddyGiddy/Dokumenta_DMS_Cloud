@@ -1,6 +1,7 @@
 using DocuManagementApp.Data;
 using DocuManagementApp.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace DocuManagementApp.Services;
 
@@ -179,12 +180,52 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
     doc.SizeBytes = revision.SizeBytes;
     doc.CurrentRevisionNumber = next;
 
+    var eventId = Guid.NewGuid();
+    _db.OutboxMessages.Add(new OutboxMessage
+    {
+      Id = eventId,
+      CorrelationId = doc.CorrelationId,
+      DocumentId = doc.Id,
+      EventType = "document.revised",
+      SchemaVersion = 1,
+      CreatedAtUtc = revision.CreatedAtUtc,
+      Payload = JsonSerializer.Serialize(new
+      {
+        eventId,
+        eventType = "document.revised",
+        schemaVersion = 1,
+        correlationId = doc.CorrelationId,
+        tenantId,
+        documentId = doc.Id,
+        revisionNumber = next,
+        baseRevisionNumber = current,
+        editedBy = revision.EditedBy,
+        comment = revision.Comment,
+        occurredAtUtc = revision.CreatedAtUtc,
+        processingStatus = "Queued",
+        requestedOutputFormat = doc.RequestedOutputFormat.ToString(),
+        documents = new[] { new
+        {
+          documentId = doc.Id,
+          doc.OriginalFileName,
+          doc.ContentType,
+          doc.SizeBytes,
+          revisionNumber = next
+        } }
+      })
+    });
+
     try
     {
       await _db.SaveChangesAsync(ct);
       await tx.CommitAsync(ct);
     }
-    catch (DbUpdateException)
+    catch (DbUpdateException exception) when (
+      exception.InnerException is Npgsql.PostgresException
+      {
+        SqlState: "23505",
+        ConstraintName: "IX_document_revisions_DocumentId_RevisionNumber"
+      })
     {
       // A concurrent writer took the same revision number.
       return new RevisionResult { Outcome = RevisionOutcome.Conflict, CurrentRevision = current + 1 };

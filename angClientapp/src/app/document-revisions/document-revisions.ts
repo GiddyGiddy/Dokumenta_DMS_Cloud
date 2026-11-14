@@ -64,7 +64,7 @@ export class DocumentRevisions implements OnInit {
     this.api
       .save(this.documentId, this.text, this.currentInfo()?.contentType ?? 'text/plain', this.loadedRevision, this.comment)
       .subscribe({
-        next: (r) => this.done(`Revision ${r.revisionNumber} gespeichert.`),
+        next: (r) => this.done(`Revision ${r.revisionNumber} gespeichert. Die erneute Verarbeitung und Indizierung wurde angestoßen.`),
         error: (e) => this.fail(e)
       });
   }
@@ -76,7 +76,7 @@ export class DocumentRevisions implements OnInit {
     this.busy.set(true);
     this.error.set('');
     this.api.restore(this.documentId, revision, this.currentRevision()).subscribe({
-      next: (r) => this.done(`Revision ${revision} als Revision ${r.revisionNumber} wiederhergestellt.`),
+      next: (r) => this.done(`Revision ${revision} als Revision ${r.revisionNumber} wiederhergestellt. Die erneute Verarbeitung und Indizierung wurde angestoßen.`),
       error: (e) => this.fail(e)
     });
   }

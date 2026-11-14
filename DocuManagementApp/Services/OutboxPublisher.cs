@@ -59,7 +59,8 @@ public sealed class RabbitMqOutboxEventPublisher : IOutboxEventPublisher
         using var channel = connection.CreateModel();
         channel.ExchangeDeclare(_options.Exchange, ExchangeType.Topic, durable: true, autoDelete: false);
         channel.QueueDeclare(_options.Queue, durable: true, exclusive: false, autoDelete: false);
-        channel.QueueBind(_options.Queue, _options.Exchange, _options.RoutingKey);
+        var routingKey = message.EventType == "document.revised" ? message.EventType : _options.RoutingKey;
+        channel.QueueBind(_options.Queue, _options.Exchange, routingKey);
         channel.ConfirmSelect();
 
         var properties = channel.CreateBasicProperties();
@@ -80,7 +81,7 @@ public sealed class RabbitMqOutboxEventPublisher : IOutboxEventPublisher
         };
 
         var body = Encoding.UTF8.GetBytes(message.Payload);
-        channel.BasicPublish(_options.Exchange, _options.RoutingKey, mandatory: true, basicProperties: properties, body: body);
+        channel.BasicPublish(_options.Exchange, routingKey, mandatory: true, basicProperties: properties, body: body);
         channel.WaitForConfirmsOrDie(TimeSpan.FromSeconds(_options.ConfirmTimeoutSeconds));
         _logger.LogInformation("RabbitMQ confirmed outbox event {EventId} ({EventType}).", message.Id, message.EventType);
         return Task.CompletedTask;

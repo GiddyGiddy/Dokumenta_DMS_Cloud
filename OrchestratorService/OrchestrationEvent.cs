@@ -6,7 +6,8 @@ public sealed record IngestedDocument(
     Guid DocumentId,
     string OriginalFileName,
     string ContentType,
-    long SizeBytes);
+    long SizeBytes,
+    int RevisionNumber = 1);
 
 public sealed record OrchestrationEvent(
     Guid EventId,
@@ -51,6 +52,12 @@ public sealed record OrchestrationEvent(
             documents.Add(ParseDocument(root));
         }
 
+        if (eventType == "document.revised" &&
+            (documents.Count != 1 || documents[0].RevisionNumber < 2))
+        {
+            throw new InvalidDataException("A revision event must contain one document with a revision number of at least 2.");
+        }
+
         return new OrchestrationEvent(
             eventId,
             correlationId,
@@ -76,7 +83,12 @@ public sealed record OrchestrationEvent(
             ? size
             : 0;
 
-        return new IngestedDocument(documentId, originalFileName, contentType, sizeBytes);
+        var revisionNumber = ReadInt32(document, "revisionNumber") ?? 1;
+        if (revisionNumber < 1)
+        {
+            throw new InvalidDataException("An ingested document has an invalid revision number.");
+        }
+        return new IngestedDocument(documentId, originalFileName, contentType, sizeBytes, revisionNumber);
     }
 
     private static Guid? ReadGuid(JsonElement element, string propertyName)
