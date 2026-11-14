@@ -29,6 +29,7 @@ public sealed class RabbitMqConsumerService(
         };
         channel.QueueDeclare(settings.IngestionQueue, durable: true, exclusive: false, autoDelete: false, arguments: queueArguments);
         channel.QueueBind(settings.IngestionQueue, settings.Exchange, "document.ingested");
+        channel.QueueBind(settings.IngestionQueue, settings.Exchange, "document.revised");
         channel.QueueBind(settings.IngestionQueue, settings.Exchange, "document.task.completed");
         channel.QueueBind(settings.IngestionQueue, settings.Exchange, "document.task.failed");
         channel.BasicQos(0, prefetchCount: 1, global: false);

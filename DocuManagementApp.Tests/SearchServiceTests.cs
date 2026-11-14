@@ -27,7 +27,8 @@ public sealed class SearchServiceTests
               "taskType": "search-index",
               "documentKind": "Invoice",
               "tenantId": "tenant:00000000-0000-0000-0000-000000000001",
-              "inputReference": "{{artifactUrl}}"
+              "inputReference": "{{artifactUrl}}",
+              "revisionNumber": 4
             }
             """;
 
@@ -40,6 +41,7 @@ public sealed class SearchServiceTests
         Assert.Equal("Invoice", command.DocumentKind);
         Assert.Equal("tenant:00000000-0000-0000-0000-000000000001", command.TenantId);
         Assert.Equal(artifactUrl, command.ArtifactReference);
+        Assert.Equal(4, command.RevisionNumber);
     }
 
     [Fact]

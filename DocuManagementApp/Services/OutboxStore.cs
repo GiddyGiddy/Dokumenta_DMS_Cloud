@@ -48,7 +48,8 @@ public sealed class EfOutboxStore : IOutboxStore
             selectCommand.Transaction = transaction.GetDbTransaction();
             selectCommand.CommandText = """
                 SELECT "Id", "DocumentId", "EventType", "SchemaVersion", "Payload", "CreatedAtUtc", "AttemptCount",
-                       "LastAttemptAtUtc", "NextAttemptAtUtc", "LockedUntilUtc", "LockToken", "LastError", "PublishedAtUtc"
+                       "LastAttemptAtUtc", "NextAttemptAtUtc", "LockedUntilUtc", "LockToken", "LastError", "PublishedAtUtc",
+                       "CorrelationId"
                 FROM "outbox_messages"
                 WHERE "PublishedAtUtc" IS NULL
                   AND ("NextAttemptAtUtc" IS NULL OR "NextAttemptAtUtc" <= @now)
@@ -77,7 +78,8 @@ public sealed class EfOutboxStore : IOutboxStore
                     LockedUntilUtc = GetNullableDateTimeOffset(reader, 9),
                     LockToken = reader.IsDBNull(10) ? null : reader.GetGuid(10),
                     LastError = reader.IsDBNull(11) ? null : reader.GetString(11),
-                    PublishedAtUtc = GetNullableDateTimeOffset(reader, 12)
+                    PublishedAtUtc = GetNullableDateTimeOffset(reader, 12),
+                    CorrelationId = reader.GetGuid(13)
                 });
             }
         }

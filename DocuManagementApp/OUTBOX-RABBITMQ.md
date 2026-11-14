@@ -26,7 +26,7 @@ Do not commit the values of `RABBITMQ_DEFAULT_PASS` or `RabbitMq__Password`. For
 | `RabbitMq:VirtualHost` | `/` | Broker virtual host |
 | `RabbitMq:Exchange` | `documents.events` | Durable topic exchange |
 | `RabbitMq:Queue` | `documents.ingested` | Durable queue bound to the event routing key |
-| `RabbitMq:RoutingKey` | `document.ingested` | Published event route |
+| `RabbitMq:RoutingKey` | `document.ingested` | Published ingestion event route; revisions use `document.revised` |
 | `RabbitMq:BatchSize` | `20` | Maximum rows claimed per poll |
 | `RabbitMq:PollIntervalSeconds` | `2` | Idle/error polling interval |
 | `RabbitMq:LeaseSeconds` | `60` | Claim timeout for crashed publishers |
@@ -36,5 +36,7 @@ Do not commit the values of `RABBITMQ_DEFAULT_PASS` or `RabbitMq__Password`. For
 Failed events remain in the outbox with incremented `AttemptCount`, `LastAttemptAtUtc`, `NextAttemptAtUtc`, and `LastError`. Retries continue with capped exponential backoff; rows are not deleted or permanently discarded. Operators can inspect and replay them by resetting retry/lease metadata or using a future admin endpoint.
 
 Delivery is **at least once**, not exactly once: the process can stop after RabbitMQ confirms a message but before the database records `PublishedAtUtc`. Every publication sets AMQP `MessageId` to the stable outbox event ID. Consumers must deduplicate that ID transactionally with their own side effects.
+
+Saving or restoring a revision commits a `document.revised` event in the same database transaction. It contains the tenant, document, revision and base revision numbers, editor, optional comment and document metadata. The revision screen confirms that processing has been queued; this is not a completion notification and is not retained as a notification inbox. Email notifications are not implemented. Subscribers should bind their own queue to `document.revised`.
 
 Apply database migrations before starting the publisher so the retry/lease columns and partial unpublished-event index exist. The publisher is registered as a hosted service and starts polling with the API process. Exchange, queue, and binding are declared durable by the publisher with the configured names before publishing.

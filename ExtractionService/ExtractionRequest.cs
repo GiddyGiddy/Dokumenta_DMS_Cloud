@@ -10,7 +10,8 @@ public sealed record ExtractionRequest(
     string DocumentKind,
     string TenantId,
     string? InputReference,
-    string RawPayload)
+    string RawPayload,
+    int RevisionNumber = 1)
 {
     public static ExtractionRequest Parse(ReadOnlyMemory<byte> body, string? messageId)
     {
@@ -39,6 +40,12 @@ public sealed record ExtractionRequest(
             throw new InvalidDataException("The extraction request is missing a valid tenantId.");
         }
 
+        var revisionNumber = ReadInt32(root, "revisionNumber") ?? 1;
+        if (revisionNumber < 1)
+        {
+            throw new InvalidDataException("The extraction request has an invalid revision number.");
+        }
+
         return new ExtractionRequest(
             ReadGuid(root, "eventId") ?? ParseGuid(messageId, "MessageId"),
             RequiredGuid(root, "correlationId"),
@@ -47,7 +54,8 @@ public sealed record ExtractionRequest(
             ReadString(root, "documentKind") ?? "Unknown",
             tenantId!,
             ReadString(root, "inputReference"),
-            JsonSerializer.Serialize(root));
+            JsonSerializer.Serialize(root),
+            revisionNumber);
     }
 
     private static Guid RequiredGuid(JsonElement element, string propertyName)

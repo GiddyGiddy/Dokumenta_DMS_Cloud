@@ -21,7 +21,12 @@ public sealed class RabbitMqPublisherIntegrationFactAttribute : FactAttribute
 public sealed class RabbitMqPublisherIntegrationTests
 {
     [RabbitMqPublisherIntegrationFact]
-    public async Task PublisherConnectsPublishesAndReceivesBrokerConfirmation()
+    public Task PublisherConnectsPublishesAndReceivesBrokerConfirmation() => VerifyPublication("document.ingested");
+
+    [RabbitMqPublisherIntegrationFact]
+    public Task PublisherRoutesRevisionEvents() => VerifyPublication("document.revised");
+
+    private static async Task VerifyPublication(string eventType)
     {
         var options = new OutboxPublisherOptions
         {
@@ -44,9 +49,9 @@ public sealed class RabbitMqPublisherIntegrationTests
             Id = Guid.NewGuid(),
             CorrelationId = correlationId,
             DocumentId = Guid.NewGuid(),
-            EventType = "document.ingested",
+            EventType = eventType,
             SchemaVersion = 1,
-            Payload = $"{{\"eventType\":\"document.ingested\",\"schemaVersion\":1,\"correlation_id\":\"{correlationId:D}\",\"processingStatus\":\"Completed\",\"requestedOutputFormat\":\"Original\"}}",
+            Payload = $"{{\"eventType\":\"{eventType}\",\"schemaVersion\":1,\"correlation_id\":\"{correlationId:D}\",\"processingStatus\":\"Completed\",\"requestedOutputFormat\":\"Original\"}}",
             CreatedAtUtc = DateTimeOffset.UtcNow
         };
 
@@ -65,17 +70,21 @@ public sealed class RabbitMqPublisherIntegrationTests
             using var channel = connection.CreateModel();
             var delivery = channel.BasicGet(options.Queue, autoAck: true);
             Assert.NotNull(delivery);
+            Assert.Equal(eventType, delivery.RoutingKey);
             Assert.Equal(message.Id.ToString("D"), delivery.BasicProperties.MessageId);
             Assert.Equal(message.CorrelationId.ToString("D"), delivery.BasicProperties.CorrelationId);
             Assert.Equal(message.SchemaVersion, delivery.BasicProperties.Headers["schemaVersion"]);
-            Assert.Equal(message.DocumentId.ToString("D"), delivery.BasicProperties.Headers["documentId"]);
-            Assert.Equal(message.CorrelationId.ToString("D"), delivery.BasicProperties.Headers["correlation_id"]);
-            Assert.Equal("Completed", delivery.BasicProperties.Headers["processingStatus"]);
-            Assert.Equal("Original", delivery.BasicProperties.Headers["requestedOutputFormat"]);
+            Assert.Equal(message.DocumentId.ToString("D"), HeaderText("documentId"));
+            Assert.Equal(message.CorrelationId.ToString("D"), HeaderText("correlation_id"));
+            Assert.Equal("Completed", HeaderText("processingStatus"));
+            Assert.Equal("Original", HeaderText("requestedOutputFormat"));
             var payload = System.Text.Encoding.UTF8.GetString(delivery.Body.ToArray());
             Assert.Contains($"\"correlation_id\":\"{correlationId:D}\"", payload);
             Assert.Contains("\"processingStatus\":\"Completed\"", payload);
             Assert.Contains("\"requestedOutputFormat\":\"Original\"", payload);
+
+            string HeaderText(string name) =>
+                System.Text.Encoding.UTF8.GetString(Assert.IsType<byte[]>(delivery.BasicProperties.Headers[name]));
         }
         finally
         {

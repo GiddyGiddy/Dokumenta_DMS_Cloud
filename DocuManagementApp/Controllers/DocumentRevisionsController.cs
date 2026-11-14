@@ -52,6 +52,29 @@ public sealed class DocumentRevisionsController : ControllerBase
     return rev is null ? NotFound() : File(rev.FileContent, rev.ContentType);
   }
 
+  [AllowAnonymous]
+  [HttpGet("{revisionNumber:int}/service-content")]
+  public async Task<IActionResult> ServiceContent(Guid documentId, int revisionNumber, [FromServices] IConfiguration configuration, CancellationToken ct)
+  {
+    var expected = configuration["ServiceDownload:ApiKey"];
+    var provided = Request.Headers["X-Service-Key"].ToString();
+    if (string.IsNullOrWhiteSpace(expected) ||
+        !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+          System.Text.Encoding.UTF8.GetBytes(expected), System.Text.Encoding.UTF8.GetBytes(provided)))
+    {
+      return Unauthorized();
+    }
+
+    var tenantId = Request.Headers["X-Tenant-Id"].ToString();
+    if (!TenantKey.IsValidKey(tenantId))
+    {
+      return BadRequest(new { message = "A valid X-Tenant-Id header is required." });
+    }
+
+    var revision = await _revisions.GetAsync(documentId, revisionNumber, tenantId, ct);
+    return revision is null ? NotFound() : File(revision.FileContent, revision.ContentType);
+  }
+
   [HttpPost]
   [Authorize(Policy = "DmsWrite")]
   [RequestSizeLimit(30 * 1024 * 1024)]
