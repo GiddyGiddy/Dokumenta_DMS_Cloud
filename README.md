@@ -48,6 +48,7 @@ RabbitMQ is an internal Container App used for the asynchronous event flow. `ver
 ## Application capabilities
 
 - **Document management:** authenticated upload, listing, download, conversion endpoints, and document metadata.
+- **Batch uploads:** select or drop multiple files (up to 5 MB each), optionally request PDF/A for supported files, and track each upload separately. Keep the page open until uploads finish; check the uploaded list before retrying an uncertain failure to avoid duplicates. Processing continues afterward.
 - **Private file storage:** documents are stored in Blob Storage in Azure; local development can use the local configuration.
 - **Revisions:** create text drafts, submit them for review, compare versions, discuss selected text, and approve or reject changes. Restoring an older revision creates a draft.
 - **Asynchronous processing:** transactional outboxes and RabbitMQ queues decouple ingestion, orchestration, extraction, and indexing.

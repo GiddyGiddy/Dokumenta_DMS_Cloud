@@ -59,6 +59,19 @@ describe('FileUploadService', () => {
     });
   });
 
+  it('propagates upload failures to the queue', async () => {
+    const file = new File(['x'], 'report.txt');
+    vi.spyOn(file, 'arrayBuffer').mockResolvedValue(new Uint8Array([65]).buffer);
+    const responsePromise = firstValueFrom(service.postFile(file));
+    const rejection = expect(responsePromise).rejects.toMatchObject({ status: 500 });
+    let request!: ReturnType<HttpTestingController['expectOne']>;
+    await vi.waitFor(() => {
+      request = httpTestingController.expectOne(`${environment.apiURL}/fileupload/upload`);
+    });
+    request.flush({ message: 'Failed' }, { status: 500, statusText: 'Server Error' });
+    await rejection;
+  });
+
   it('posts to the PDF/A conversion endpoint for the selected document', async () => {
     const responsePromise = firstValueFrom(service.archiveAsPdfA('document-123'));
     let request!: ReturnType<HttpTestingController['expectOne']>;

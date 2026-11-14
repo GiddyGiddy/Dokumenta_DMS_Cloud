@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { FileUploadService, UploadReceipt, UploadedFileInfo } from '../file-upload.service';
 
 import { FileUpload } from './file-upload';
@@ -45,83 +45,102 @@ describe('FileUpload', () => {
     expect(component).toBeTruthy();
   });
 
-  it('enables PDF/A archiving for supported office documents and PDFs', () => {
-    component.handleFileInput(new File(['document'], 'report.DOCX'));
+  it('queues multiple files, rejecting oversized and empty files independently', () => {
+    const valid = new File(['a'], 'report.docx');
+    const atLimit = new File([new Uint8Array(component.maxFileSizeBytes)], 'limit.pdf');
+    const oversized = new File([new Uint8Array(component.maxFileSizeBytes + 1)], 'large.pdf');
+    const empty = new File([], 'empty.txt');
+    component.addFiles([valid, atLimit, oversized, empty]);
 
-    expect(component.canArchiveAsPdfA).toBe(true);
-
-    component.handleFileInput(new File(['pdf'], 'report.pdf', { type: 'application/pdf' }));
-
-    expect(component.canArchiveAsPdfA).toBe(true);
+    expect(component.queue.map(item => item.status)).toEqual(['queued', 'queued', 'invalid', 'invalid']);
+    expect(component.queue[2].message).toContain('5 MB');
+    expect(component.queue[3].message).toContain('empty');
+    component.uploadFileToActivity();
+    expect(fileUploadService.postFile).toHaveBeenCalledTimes(2);
+    expect(fileUploadService.postFile).toHaveBeenCalledWith(valid, false);
   });
 
-  it('disables PDF/A archiving for unsupported types and clears the selection', () => {
-    component.archiveAsPdfA = true;
-
-    component.handleFileInput(new File(['image'], 'image.png'));
-
-    expect(component.canArchiveAsPdfA).toBe(false);
-    expect(component.archiveAsPdfA).toBe(false);
+  it('accepts multiple files through the file input', () => {
+    fixture.detectChanges();
+    const input: HTMLInputElement = fixture.nativeElement.querySelector('input[type="file"]');
+    const files = [new File(['a'], 'one.pdf'), new File(['b'], 'two.pdf')];
+    Object.defineProperty(input, 'files', { configurable: true, value: files });
+    expect(input.multiple).toBe(true);
+    input.dispatchEvent(new Event('change'));
+    expect(component.queue.map(item => item.file)).toEqual(files);
   });
 
-  it('rejects files larger than 5 MB', () => {
-    const oversizedFile = {
-      name: 'large.docx',
-      size: component.maxFileSizeBytes + 1,
-    } as File;
-
-    component.handleFileInput(oversizedFile);
-
-    expect(component.fileToUpload).toBeNull();
-    expect(component.errorMessage).toContain('Maximum allowed size is 5 MB');
-  });
-
-  it('uploads normally without requesting PDF/A archiving when unchecked', () => {
-    component.handleFileInput(new File(['document'], 'report.docx'));
+  it('uploads at most two files concurrently and applies PDF/A per file', () => {
+    const files = ['one.docx', 'two.png', 'three.pdf'].map(name => new File(['x'], name));
+    const requests = files.map(() => new Subject<UploadReceipt>());
+    files.forEach((file, index) => {
+      fileUploadService.postFile.mockImplementationOnce(() => requests[index]);
+    });
+    component.addFiles(files);
+    component.queue[0].archiveAsPdfA = true;
+    expect(component.canArchiveAsPdfA(files[0])).toBe(true);
+    expect(component.canArchiveAsPdfA(files[1])).toBe(false);
 
     component.uploadFileToActivity();
+    expect(fileUploadService.postFile).toHaveBeenCalledTimes(2);
+    expect(fileUploadService.postFile).toHaveBeenNthCalledWith(1, files[0], true);
+    expect(fileUploadService.postFile).toHaveBeenNthCalledWith(2, files[1], false);
+    expect(component.queue.map(item => item.status)).toEqual(['uploading', 'uploading', 'queued']);
 
-    expect(fileUploadService.postFile).toHaveBeenCalledOnce();
-    expect(fileUploadService.archiveAsPdfA).not.toHaveBeenCalled();
+    requests[0].next(uploadReceipt);
+    requests[0].complete();
+    expect(fileUploadService.postFile).toHaveBeenCalledTimes(3);
+    requests[1].next(uploadReceipt);
+    requests[1].complete();
+    requests[2].next(uploadReceipt);
+    requests[2].complete();
+    expect(component.queue.map(item => item.status)).toEqual(['uploaded', 'uploaded', 'uploaded']);
+    expect(component.successMessage).toContain('3 uploaded');
     expect(fileUploadService.getUploadedFiles).toHaveBeenCalledTimes(2);
-    expect(component.successMessage).toBe('File uploaded successfully.');
   });
 
-  it('uploads the source and requested PDF/A rendition in one request', () => {
-    const file = new File(['document'], 'report.docx');
-    component.handleFileInput(file);
-    component.archiveAsPdfA = true;
-    fileUploadService.postFile.mockReturnValue(of({ ...uploadReceipt, requestedOutputFormat: 'PdfA' }));
-
+  it('continues after a failure and retries only the failed file', () => {
+    const files = [new File(['a'], 'one.docx'), new File(['b'], 'two.pdf')];
+    fileUploadService.postFile
+      .mockReturnValueOnce(throwError(() => new Error('network error')))
+      .mockReturnValueOnce(of(uploadReceipt))
+      .mockReturnValueOnce(of(uploadReceipt));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    component.addFiles(files);
+    component.queue[0].archiveAsPdfA = true;
     component.uploadFileToActivity();
 
-    expect(fileUploadService.postFile).toHaveBeenCalledWith(file, true);
-    expect(fileUploadService.archiveAsPdfA).not.toHaveBeenCalled();
-    expect(component.successMessage).toContain('PDF/A archive are available');
-    expect(component.warningMessage).toBe('');
+    expect(component.queue.map(item => item.status)).toEqual(['failed', 'uploaded']);
+    expect(component.queue[0].message).toContain('avoid duplicates');
+    expect(component.successMessage).toContain('1 uploaded, 1 failed');
+    component.retryFile(component.queue[0]);
+    expect(fileUploadService.postFile).toHaveBeenCalledTimes(3);
+    expect(fileUploadService.postFile).toHaveBeenLastCalledWith(files[0], true);
+    expect(component.queue.map(item => item.status)).toEqual(['uploaded', 'uploaded']);
+    log.mockRestore();
   });
 
-  it('reports a failed atomic PDF/A upload without claiming the original was saved', () => {
-    fileUploadService.postFile.mockReturnValue(of(null));
-    component.handleFileInput(new File(['document'], 'report.docx'));
-    component.archiveAsPdfA = true;
+  it('adds dropped files to the queue and ignores drops during an upload', () => {
+    const preventDefault = vi.fn();
+    const file = new File(['x'], 'drop.pdf');
+    const event = { preventDefault, dataTransfer: { files: [file] } } as unknown as DragEvent;
+    component.onFilesDropped(event);
+    component.isUploading = true;
+    component.onFilesDropped(event);
 
-    component.uploadFileToActivity();
-
-    expect(component.successMessage).toBe('');
-    expect(component.errorMessage).toBe('Upload failed. Please try again.');
-    expect(fileUploadService.getUploadedFiles).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledTimes(2);
+    expect(component.queue).toHaveLength(1);
+    expect(component.queue[0].file).toBe(file);
   });
 
-  it('shows an upload error when the upload fails', () => {
-    fileUploadService.postFile.mockReturnValue(of(null));
-    component.handleFileInput(new File(['document'], 'report.docx'));
-
-    component.uploadFileToActivity();
-
-    expect(component.errorMessage).toBe('Upload failed. Please try again.');
-    expect(fileUploadService.archiveAsPdfA).not.toHaveBeenCalled();
-    expect(fileUploadService.getUploadedFiles).toHaveBeenCalledOnce();
+  it('reports list refresh failures rather than showing an empty list', () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fileUploadService.getUploadedFiles.mockReturnValueOnce(throwError(() => new Error('offline')));
+    component.loadUploadedFiles();
+    fixture.detectChanges();
+    expect(component.filesErrorMessage).toContain('Could not refresh');
+    expect(fixture.nativeElement.textContent).not.toContain('No files uploaded yet.');
+    log.mockRestore();
   });
 
   it('converts an existing uploaded document and refreshes the list', () => {

@@ -1,43 +1,44 @@
 <div class="upload-layout">
-    <div class="form-group">
-        <label for="file">Choose File</label>
+    <div class="form-group" (dragover)="$event.preventDefault()" (drop)="onFilesDropped($event)">
+        <label for="file">Choose files or drop them here</label>
         <input
             type="file"
             id="file"
             #fileInputRef
+            multiple
             (change)="onFileSelected($event)"
             [disabled]="isUploading"
         />
 
-        <p class="file-meta">{{ selectedFileName }}</p>
-
-        <label class="archive-option">
-            <input
-                type="checkbox"
-                [checked]="archiveAsPdfA"
-                [disabled]="isUploading || !canArchiveAsPdfA"
-                (change)="setArchiveAsPdfA($event)"
-            />
-            <span>
-                <strong>Als PDF/A archivieren</strong>
-                <small>Erstellt eine separate PDF/A-Kopie. Das Original bleibt erhalten.</small>
-            </span>
-        </label>
-        <p class="archive-note" *ngIf="fileToUpload && !canArchiveAsPdfA">
-            PDF/A-Archivierung ist für PDF-, Word-, Excel- und OpenDocument-Dateien verfügbar.
-        </p>
+        <p class="file-meta">Maximum 5 MB per file. Keep this page open while uploads are running.</p>
+        <ul class="upload-queue" *ngIf="queue.length">
+            <li *ngFor="let item of queue">
+                <strong>{{ item.file.name }}</strong>
+                <span class="file-meta"> ({{ formatSize(item.file.size) }}) — {{ item.status }}</span>
+                <label class="archive-option" *ngIf="canArchiveAsPdfA(item.file)">
+                    <input type="checkbox" [checked]="item.archiveAsPdfA"
+                        [disabled]="isUploading || item.status !== 'queued'"
+                        (change)="setArchiveAsPdfA(item, $event)" />
+                    <span>Als PDF/A archivieren <small>Das Original bleibt erhalten.</small></span>
+                </label>
+                <p class="queue-message" *ngIf="item.message" [class.status-error]="item.status === 'failed' || item.status === 'invalid'">
+                    {{ item.message }}
+                </p>
+                <button type="button" *ngIf="item.status === 'failed'" [disabled]="isUploading"
+                    (click)="retryFile(item)">Retry</button>
+            </li>
+        </ul>
 
         <div class="actions">
-            <button type="button" (click)="uploadFileToActivity()" [disabled]="!fileToUpload || isUploading">
-                {{ isUploading ? 'Uploading...' : 'Upload' }}
+            <button type="button" (click)="uploadFileToActivity()" [disabled]="!queuedCount || isUploading">
+                {{ isUploading ? 'Uploading...' : 'Upload selected files' }}
             </button>
-            <button type="button" (click)="clearSelection(fileInputRef)" [disabled]="isUploading">
+            <button type="button" (click)="clearSelection()" [disabled]="isUploading || !queue.length">
                 Clear
             </button>
         </div>
 
-        <p class="status success">{{ successMessage }}</p>
-        <p class="status warning">{{ warningMessage }}</p>
+        <p class="status success" aria-live="polite">{{ successMessage }}</p>
         <p class="status error">{{ errorMessage }}</p>
     </div>
 
@@ -48,10 +49,11 @@
                 {{ isLoadingFiles ? 'Loading...' : 'Refresh' }}
             </button>
         </div>
+        <p class="status error" *ngIf="filesErrorMessage">{{ filesErrorMessage }}</p>
         <p class="status success" *ngIf="conversionMessage">{{ conversionMessage }}</p>
         <p class="status error" *ngIf="conversionErrorMessage">{{ conversionErrorMessage }}</p>
 
-        <p class="file-meta" *ngIf="!isLoadingFiles && uploadedFiles.length === 0">
+        <p class="file-meta" *ngIf="!isLoadingFiles && !filesErrorMessage && uploadedFiles.length === 0">
             No files uploaded yet.
         </p>
 
