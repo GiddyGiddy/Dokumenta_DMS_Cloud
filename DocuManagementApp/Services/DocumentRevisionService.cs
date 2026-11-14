@@ -14,6 +14,7 @@ public sealed class RevisionInfo
   public string EditedBy { get; set; } = string.Empty;
   public string? Comment { get; set; }
   public DateTimeOffset CreatedAtUtc { get; set; }
+  public string Status { get; set; } = "Approved";
 }
 
 public enum RevisionOutcome { Created, NotFound, Conflict, Invalid }
@@ -29,8 +30,9 @@ public interface IDocumentRevisionService
 {
   Task<IReadOnlyList<RevisionInfo>?> ListAsync(Guid documentId, string tenantId, CancellationToken ct = default);
   Task<DocumentRevision?> GetAsync(Guid documentId, int revisionNumber, string tenantId, CancellationToken ct = default);
-  Task<RevisionResult> CreateAsync(Guid documentId, string tenantId, byte[] content, string? contentType, int expectedRevision, string editedBy, string? comment, CancellationToken ct = default);
-  Task<RevisionResult> RestoreAsync(Guid documentId, int revisionNumber, string tenantId, int expectedRevision, string editedBy, CancellationToken ct = default);
+  Task<RevisionResult> CreateAsync(Guid documentId, string tenantId, byte[] content, string? contentType, int expectedRevision, string editedBy, string? comment, CancellationToken ct = default, string? actorId = null);
+  Task<RevisionResult> RestoreAsync(Guid documentId, int revisionNumber, string tenantId, int expectedRevision, string editedBy, string reason, CancellationToken ct = default, string? actorId = null);
+  Task<RevisionResult> TransitionAsync(Guid documentId, int revisionNumber, string tenantId, string action, string? reason, string actorId, string actorName, CancellationToken ct = default);
 }
 
 public sealed class DocumentRevisionService : IDocumentRevisionService
@@ -68,7 +70,8 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
         SizeBytes = r.SizeBytes,
         EditedBy = r.EditedBy,
         Comment = r.Comment,
-        CreatedAtUtc = r.CreatedAtUtc
+        CreatedAtUtc = r.CreatedAtUtc,
+        Status = r.Status
       })
       .ToListAsync(ct);
 
@@ -118,9 +121,9 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
     return original;
   }
 
-  public async Task<RevisionResult> CreateAsync(Guid documentId, string tenantId, byte[] content, string? contentType, int expectedRevision, string editedBy, string? comment, CancellationToken ct = default)
+  public async Task<RevisionResult> CreateAsync(Guid documentId, string tenantId, byte[] content, string? contentType, int expectedRevision, string editedBy, string? comment, CancellationToken ct = default, string? actorId = null)
   {
-    if (content is null || content.Length == 0)
+    if (content is null || content.Length == 0 || string.IsNullOrWhiteSpace(comment) || comment.Length > 2000)
     {
       return new RevisionResult { Outcome = RevisionOutcome.Invalid };
     }
@@ -133,10 +136,12 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
     {
       return new RevisionResult { Outcome = RevisionOutcome.Conflict, CurrentRevision = current };
     }
+    var baseContent = await GetAsync(documentId, current, tenantId, ct);
+    if (baseContent is null) return new RevisionResult { Outcome = RevisionOutcome.NotFound };
 
     await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-    if (doc.CurrentRevisionNumber == 0)
+    if (doc.CurrentRevisionNumber == 0 && !await _db.DocumentRevisions.AnyAsync(r => r.DocumentId == doc.Id && r.RevisionNumber == 1, ct))
     {
       _db.DocumentRevisions.Add(new DocumentRevision
       {
@@ -158,7 +163,8 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
       newBlobName = await _blobStore.SaveAsync(doc.Id, content, resolvedContentType, ct);
     }
 
-    var next = current + 1;
+    var next = Math.Max(current, await _db.DocumentRevisions.Where(r => r.DocumentId == doc.Id)
+      .Select(r => (int?)r.RevisionNumber).MaxAsync(ct) ?? 0) + 1;
     var revision = new DocumentRevision
     {
       DocumentId = doc.Id,
@@ -170,50 +176,19 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
       SizeBytes = content.LongLength,
       EditedBy = string.IsNullOrWhiteSpace(editedBy) ? "anonymous" : editedBy,
       Comment = comment,
-      CreatedAtUtc = DateTimeOffset.UtcNow
+      CreatedAtUtc = DateTimeOffset.UtcNow,
+      Status = "Draft"
     };
     _db.DocumentRevisions.Add(revision);
 
-    doc.FileContent = revision.FileContent;
-    doc.BlobName = revision.BlobName;
-    doc.ContentType = revision.ContentType;
-    doc.SizeBytes = revision.SizeBytes;
-    doc.CurrentRevisionNumber = next;
-
-    var eventId = Guid.NewGuid();
-    _db.OutboxMessages.Add(new OutboxMessage
-    {
-      Id = eventId,
-      CorrelationId = doc.CorrelationId,
-      DocumentId = doc.Id,
-      EventType = "document.revised",
-      SchemaVersion = 1,
-      CreatedAtUtc = revision.CreatedAtUtc,
-      Payload = JsonSerializer.Serialize(new
+    AddActivity(doc.Id, next, actorId ?? editedBy, editedBy, "draft_created", comment,
+      JsonSerializer.Serialize(new
       {
-        eventId,
-        eventType = "document.revised",
-        schemaVersion = 1,
-        correlationId = doc.CorrelationId,
-        tenantId,
-        documentId = doc.Id,
-        revisionNumber = next,
         baseRevisionNumber = current,
-        editedBy = revision.EditedBy,
-        comment = revision.Comment,
-        occurredAtUtc = revision.CreatedAtUtc,
-        processingStatus = "Queued",
-        requestedOutputFormat = doc.RequestedOutputFormat.ToString(),
-        documents = new[] { new
-        {
-          documentId = doc.Id,
-          doc.OriginalFileName,
-          doc.ContentType,
-          doc.SizeBytes,
-          revisionNumber = next
-        } }
-      })
-    });
+        contentChanged = !baseContent.FileContent.AsSpan().SequenceEqual(content),
+        contentType = new { before = doc.ContentType, after = resolvedContentType },
+        sizeBytes = new { before = doc.SizeBytes, after = content.LongLength }
+      }));
 
     try
     {
@@ -228,13 +203,13 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
       })
     {
       // A concurrent writer took the same revision number.
-      return new RevisionResult { Outcome = RevisionOutcome.Conflict, CurrentRevision = current + 1 };
+      return new RevisionResult { Outcome = RevisionOutcome.Conflict, CurrentRevision = current };
     }
 
     return new RevisionResult
     {
       Outcome = RevisionOutcome.Created,
-      CurrentRevision = next,
+      CurrentRevision = current,
       Revision = new RevisionInfo
       {
         RevisionNumber = next,
@@ -243,17 +218,93 @@ public sealed class DocumentRevisionService : IDocumentRevisionService
         SizeBytes = revision.SizeBytes,
         EditedBy = revision.EditedBy,
         Comment = revision.Comment,
-        CreatedAtUtc = revision.CreatedAtUtc
+        CreatedAtUtc = revision.CreatedAtUtc,
+        Status = revision.Status
       }
     };
   }
 
-  public async Task<RevisionResult> RestoreAsync(Guid documentId, int revisionNumber, string tenantId, int expectedRevision, string editedBy, CancellationToken ct = default)
+  public async Task<RevisionResult> RestoreAsync(Guid documentId, int revisionNumber, string tenantId, int expectedRevision, string editedBy, string reason, CancellationToken ct = default, string? actorId = null)
   {
+    if (string.IsNullOrWhiteSpace(reason) || reason.Length > 1950) return new RevisionResult { Outcome = RevisionOutcome.Invalid };
     var source = await GetAsync(documentId, revisionNumber, tenantId, ct);
-    if (source is null) return new RevisionResult { Outcome = RevisionOutcome.NotFound };
+    if (source is null || source.Status != "Approved") return new RevisionResult { Outcome = RevisionOutcome.NotFound };
 
     return await CreateAsync(documentId, tenantId, source.FileContent, source.ContentType, expectedRevision, editedBy,
-      $"Restored from revision {revisionNumber}", ct);
+      $"Restored from revision {revisionNumber}: {reason.Trim()}", ct, actorId);
   }
+
+  public async Task<RevisionResult> TransitionAsync(Guid documentId, int revisionNumber, string tenantId, string action, string? reason, string actorId, string actorName, CancellationToken ct = default)
+  {
+    if ((action != "submit" && action != "approve" && action != "reject") ||
+        (action == "reject" && string.IsNullOrWhiteSpace(reason)) || reason?.Length > 2000)
+      return new RevisionResult { Outcome = RevisionOutcome.Invalid };
+
+    await using var tx = await _db.Database.BeginTransactionAsync(ct);
+    var doc = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId && d.TenantId == tenantId, ct);
+    if (doc is null) return new RevisionResult { Outcome = RevisionOutcome.NotFound };
+    var revision = await _db.DocumentRevisions.FirstOrDefaultAsync(r => r.DocumentId == documentId && r.RevisionNumber == revisionNumber, ct);
+    if (revision is null) return new RevisionResult { Outcome = RevisionOutcome.NotFound };
+    var current = Math.Max(doc.CurrentRevisionNumber, 1);
+    if ((action == "submit" && revision.Status != "Draft") ||
+        (action != "submit" && revision.Status != "InReview") ||
+        (action != "reject" && revision.BaseRevisionNumber != current))
+      return new RevisionResult { Outcome = RevisionOutcome.Conflict, CurrentRevision = current };
+
+    var oldStatus = revision.Status;
+    revision.Status = action switch { "submit" => "InReview", "approve" => "Approved", _ => "Rejected" };
+    AddActivity(documentId, revisionNumber, actorId, actorName, action, reason,
+      JsonSerializer.Serialize(new { status = new { before = oldStatus, after = revision.Status } }));
+
+    if (action == "approve")
+    {
+      doc.FileContent = revision.FileContent;
+      doc.BlobName = revision.BlobName;
+      doc.ContentType = revision.ContentType;
+      doc.SizeBytes = revision.SizeBytes;
+      doc.CurrentRevisionNumber = revisionNumber;
+      var eventId = Guid.NewGuid();
+      _db.OutboxMessages.Add(new OutboxMessage
+      {
+        Id = eventId, CorrelationId = doc.CorrelationId, DocumentId = doc.Id,
+        EventType = "document.revised", SchemaVersion = 1, CreatedAtUtc = DateTimeOffset.UtcNow,
+        Payload = JsonSerializer.Serialize(new
+        {
+          eventId, eventType = "document.revised", schemaVersion = 1, correlationId = doc.CorrelationId,
+          tenantId, documentId = doc.Id, revisionNumber, baseRevisionNumber = revision.BaseRevisionNumber,
+          editedBy = revision.EditedBy, comment = revision.Comment, occurredAtUtc = DateTimeOffset.UtcNow,
+          processingStatus = "Queued", requestedOutputFormat = doc.RequestedOutputFormat.ToString(),
+          documents = new[] { new { documentId = doc.Id, doc.OriginalFileName, doc.ContentType, doc.SizeBytes, revisionNumber } }
+        })
+      });
+    }
+
+    try
+    {
+      await _db.SaveChangesAsync(ct);
+      await tx.CommitAsync(ct);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+      return new RevisionResult { Outcome = RevisionOutcome.Conflict, CurrentRevision = current };
+    }
+    return new RevisionResult
+    {
+      Outcome = RevisionOutcome.Created,
+      CurrentRevision = action == "approve" ? revisionNumber : current,
+      Revision = new RevisionInfo
+      {
+        RevisionNumber = revision.RevisionNumber, BaseRevisionNumber = revision.BaseRevisionNumber,
+        ContentType = revision.ContentType, SizeBytes = revision.SizeBytes, EditedBy = revision.EditedBy,
+        Comment = revision.Comment, CreatedAtUtc = revision.CreatedAtUtc, Status = revision.Status
+      }
+    };
+  }
+
+  private void AddActivity(Guid documentId, int revisionNumber, string actorId, string actorName, string action, string? reason, string? changes) =>
+    _db.RevisionActivities.Add(new RevisionActivity
+    {
+      DocumentId = documentId, RevisionNumber = revisionNumber, ActorId = actorId,
+      ActorName = actorName, Action = action, Reason = reason, Changes = changes
+    });
 }

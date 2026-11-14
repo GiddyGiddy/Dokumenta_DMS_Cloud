@@ -50,6 +50,7 @@ builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>(
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IOutboxStore, EfOutboxStore>();
 builder.Services.AddScoped<IDocumentRevisionService, DocumentRevisionService>();
+builder.Services.AddScoped<IRevisionCollaborationService, RevisionCollaborationService>();
 builder.Services.AddOptions<SearchProxyOptions>()
   .Bind(builder.Configuration.GetSection("SearchProxy"))
   .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _), "SearchProxy:BaseUrl must be an absolute URL.")

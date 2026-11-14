@@ -15,7 +15,11 @@ public sealed class CreateRevisionRequest
 public sealed class RestoreRevisionRequest
 {
   public int ExpectedRevision { get; set; }
+  public string Reason { get; set; } = string.Empty;
 }
+
+/// <summary>Optional explanation for a review decision.</summary>
+public sealed record RevisionTransitionRequest(string? Reason);
 
 [ApiController]
 [Route("api/documents/{documentId:guid}/revisions")]
@@ -72,7 +76,7 @@ public sealed class DocumentRevisionsController : ControllerBase
     }
 
     var revision = await _revisions.GetAsync(documentId, revisionNumber, tenantId, ct);
-    return revision is null ? NotFound() : File(revision.FileContent, revision.ContentType);
+    return revision is null || revision.Status != "Approved" ? NotFound() : File(revision.FileContent, revision.ContentType);
   }
 
   [HttpPost]
@@ -96,9 +100,11 @@ public sealed class DocumentRevisionsController : ControllerBase
       return BadRequest("contentBase64 is not valid base64.");
     }
 
+    var actorId = ActorId();
+    if (string.IsNullOrWhiteSpace(actorId)) return Forbid();
     var result = await _revisions.CreateAsync(documentId, tenantId, content, request.ContentType,
-      request.ExpectedRevision, Editor(), request.Comment, ct);
-    return Map(result);
+      request.ExpectedRevision, Editor(), request.Comment, ct, actorId);
+    return CreatedRevision(documentId, result);
   }
 
   [HttpPost("{revisionNumber:int}/restore")]
@@ -111,9 +117,37 @@ public sealed class DocumentRevisionsController : ControllerBase
       return StatusCode(StatusCodes.Status403Forbidden, new { message = "The access token does not carry a usable tenant identity." });
     }
 
-    var result = await _revisions.RestoreAsync(documentId, revisionNumber, tenantId, request.ExpectedRevision, Editor(), ct);
-    return Map(result);
+    var actorId = ActorId();
+    if (string.IsNullOrWhiteSpace(actorId)) return Forbid();
+    var result = await _revisions.RestoreAsync(documentId, revisionNumber, tenantId, request.ExpectedRevision, Editor(), request.Reason, ct, actorId);
+    return CreatedRevision(documentId, result);
   }
+
+  [HttpPost("{revisionNumber:int}/submit")]
+  [Authorize(Policy = "DmsWrite")]
+  public Task<IActionResult> Submit(Guid documentId, int revisionNumber, CancellationToken ct) =>
+    Transition(documentId, revisionNumber, "submit", null, ct);
+
+  [HttpPost("{revisionNumber:int}/approve")]
+  [Authorize(Policy = "DmsReview")]
+  public Task<IActionResult> Approve(Guid documentId, int revisionNumber, [FromBody] RevisionTransitionRequest request, CancellationToken ct) =>
+    Transition(documentId, revisionNumber, "approve", request.Reason, ct);
+
+  [HttpPost("{revisionNumber:int}/reject")]
+  [Authorize(Policy = "DmsReview")]
+  public Task<IActionResult> Reject(Guid documentId, int revisionNumber, [FromBody] RevisionTransitionRequest request, CancellationToken ct) =>
+    Transition(documentId, revisionNumber, "reject", request.Reason, ct);
+
+  private async Task<IActionResult> Transition(Guid documentId, int revisionNumber, string action, string? reason, CancellationToken ct)
+  {
+    var tenantId = TenantKey.FromPrincipal(User);
+    var actorId = ActorId();
+    if (tenantId is null || !TenantKey.IsValidKey(tenantId) || string.IsNullOrWhiteSpace(actorId)) return Forbid();
+    var result = await _revisions.TransitionAsync(documentId, revisionNumber, tenantId, action, reason, actorId, Editor(), ct);
+    return result.Outcome == RevisionOutcome.Created ? Ok(result.Revision) : Map(result);
+  }
+
+  private string? ActorId() => User.FindFirst("oid")?.Value ?? User.FindFirst("sub")?.Value;
 
   private string Editor() =>
     User.FindFirst("preferred_username")?.Value
@@ -121,11 +155,16 @@ public sealed class DocumentRevisionsController : ControllerBase
     ?? User.Identity?.Name
     ?? "unknown";
 
+  private IActionResult CreatedRevision(Guid documentId, RevisionResult result) =>
+    result.Outcome == RevisionOutcome.Created && result.Revision is not null
+      ? CreatedAtAction(nameof(Content), new { documentId, revisionNumber = result.Revision.RevisionNumber }, result.Revision)
+      : Map(result);
+
   private IActionResult Map(RevisionResult result) => result.Outcome switch
   {
     RevisionOutcome.Created => StatusCode(StatusCodes.Status201Created, result.Revision),
     RevisionOutcome.NotFound => NotFound(),
-    RevisionOutcome.Invalid => BadRequest("Content must not be empty."),
+    RevisionOutcome.Invalid => BadRequest(new { message = "Content and a reason are required, and reasons must not exceed 2000 characters." }),
     _ => Conflict(new { message = "Document was modified by someone else.", currentRevision = result.CurrentRevision })
   };
 }

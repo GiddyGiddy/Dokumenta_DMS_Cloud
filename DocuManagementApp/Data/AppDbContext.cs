@@ -12,6 +12,8 @@ public sealed class AppDbContext : DbContext
   public DbSet<DocumentRecord> Documents => Set<DocumentRecord>();
   public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
   public DbSet<DocumentRevision> DocumentRevisions => Set<DocumentRevision>();
+  public DbSet<RevisionActivity> RevisionActivities => Set<RevisionActivity>();
+  public DbSet<RevisionComment> RevisionComments => Set<RevisionComment>();
 
   protected override void OnModelCreating(ModelBuilder modelBuilder)
   {
@@ -39,7 +41,7 @@ public sealed class AppDbContext : DbContext
       entity.Property(x => x.ProcessingStartedAtUtc);
       entity.Property(x => x.ProcessingCompletedAtUtc);
       entity.Property(x => x.FailureSummary).HasMaxLength(2000);
-      entity.Property(x => x.CurrentRevisionNumber).HasDefaultValue(0).IsRequired();
+      entity.Property(x => x.CurrentRevisionNumber).HasDefaultValue(0).IsRequired().IsConcurrencyToken();
       entity.HasIndex(x => x.UploadedAtUtc);
       entity.HasIndex(x => x.CorrelationId);
       entity.HasIndex(x => x.TenantId);
@@ -54,11 +56,37 @@ public sealed class AppDbContext : DbContext
       entity.Property(x => x.ContentType).HasMaxLength(256).IsRequired();
       entity.Property(x => x.EditedBy).HasMaxLength(256).IsRequired();
       entity.Property(x => x.Comment).HasMaxLength(2000);
+      entity.Property(x => x.Status).HasMaxLength(32).HasDefaultValue("Approved").IsRequired().IsConcurrencyToken();
       entity.HasOne<DocumentRecord>()
         .WithMany()
         .HasForeignKey(x => x.DocumentId)
         .OnDelete(DeleteBehavior.Cascade);
       entity.HasIndex(x => new { x.DocumentId, x.RevisionNumber }).IsUnique();
+    });
+
+    modelBuilder.Entity<RevisionActivity>(entity =>
+    {
+      entity.ToTable("revision_activities");
+      entity.HasKey(x => x.Id);
+      entity.Property(x => x.ActorId).HasMaxLength(256).IsRequired();
+      entity.Property(x => x.ActorName).HasMaxLength(256).IsRequired();
+      entity.Property(x => x.Action).HasMaxLength(64).IsRequired();
+      entity.Property(x => x.Reason).HasMaxLength(2000);
+      entity.Property(x => x.Changes).HasColumnType("jsonb");
+      entity.HasOne<DocumentRecord>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
+      entity.HasIndex(x => new { x.DocumentId, x.CreatedAtUtc });
+    });
+
+    modelBuilder.Entity<RevisionComment>(entity =>
+    {
+      entity.ToTable("revision_comments");
+      entity.HasKey(x => x.Id);
+      entity.Property(x => x.ActorId).HasMaxLength(256).IsRequired();
+      entity.Property(x => x.ActorName).HasMaxLength(256).IsRequired();
+      entity.Property(x => x.Text).HasMaxLength(2000).IsRequired();
+      entity.Property(x => x.SelectedText).HasMaxLength(4000).IsRequired();
+      entity.HasOne<DocumentRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.Restrict);
+      entity.HasIndex(x => new { x.RevisionId, x.CreatedAtUtc });
     });
 
     modelBuilder.Entity<OutboxMessage>(entity =>

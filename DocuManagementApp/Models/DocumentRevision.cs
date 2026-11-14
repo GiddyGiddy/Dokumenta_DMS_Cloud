@@ -13,4 +13,5 @@ public sealed class DocumentRevision
   public string EditedBy { get; set; } = "anonymous";
   public string? Comment { get; set; }
   public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+  public string Status { get; set; } = "Approved";
 }
