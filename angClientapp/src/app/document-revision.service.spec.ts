@@ -30,4 +30,10 @@ describe('DocumentRevisionService', () => {
     expect(atob(req.request.body.contentBase64).length).toBe(7);
     req.flush({ revisionNumber: 2 });
   });
+
+  it('preserves a UTF-8 BOM so comment offsets match the server', () => {
+    service.getContent('abc', 1).subscribe(content => expect(content.text).toBe('\ufeffhello'));
+    const req = http.expectOne(r => r.url.endsWith('/documents/abc/revisions/1/content'));
+    req.flush(new Uint8Array([0xef, 0xbb, 0xbf, 104, 101, 108, 108, 111]).buffer);
+  });
 });

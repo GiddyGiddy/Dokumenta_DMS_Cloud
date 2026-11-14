@@ -1,41 +1,105 @@
 <section class="revisions">
-  <h2>Verlauf und Bearbeitung</h2>
+  <h2>Revision und Freigabe</h2>
   <p class="doc-id">Dokument: {{ documentId }}</p>
-
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (message()) { <p class="ok" role="status">{{ message() }}</p> }
 
   <table>
-    <thead>
-      <tr><th>#</th><th>Bearbeiter</th><th>Datum</th><th>Kommentar</th><th>Größe</th><th></th></tr>
-    </thead>
+    <thead><tr><th>Revision</th><th>Status</th><th>Bearbeiter</th><th>Datum</th><th>Änderungsgrund</th><th>Aktionen</th></tr></thead>
     <tbody>
       @for (r of revisions().slice().reverse(); track r.revisionNumber) {
         <tr [class.current]="r.revisionNumber === currentRevision()">
-          <td>{{ r.revisionNumber }}</td>
-          <td>{{ r.editedBy }}</td>
-          <td>{{ r.createdAtUtc | date:'short' }}</td>
-          <td>{{ r.comment }}</td>
-          <td>{{ r.sizeBytes }} B</td>
+          <td>{{ r.revisionNumber }}</td><td>{{ statusLabel(r.status) }}</td><td>{{ r.editedBy }}</td>
+          <td>{{ r.createdAtUtc | date:'short' }}</td><td>{{ r.comment }}</td>
           <td class="actions">
-            @if (editable()) { <button type="button" (click)="view(r.revisionNumber)">Anzeigen</button> }
+            <button type="button" (click)="view(r.revisionNumber)">Vergleichen</button>
             <button type="button" (click)="download(r.revisionNumber)">Download</button>
-            @if (auth.canReview && r.revisionNumber !== currentRevision()) {
-              <button type="button" (click)="restore(r.revisionNumber)" [disabled]="busy()">Wiederherstellen</button>
+            @if (auth.canWrite && r.status === 'Draft') {
+              <button type="button" (click)="transition(r.revisionNumber, 'submit')" [disabled]="busy()">Zur Prüfung einreichen</button>
+            }
+            @if (auth.canReview && r.status === 'InReview') {
+              <button type="button" (click)="transition(r.revisionNumber, 'approve')" [disabled]="busy()">Freigeben</button>
+              <button type="button" (click)="transition(r.revisionNumber, 'reject')" [disabled]="busy() || !decisionReason.trim()">Ablehnen</button>
+            }
+            @if (auth.canReview && r.status === 'Approved' && r.revisionNumber !== currentRevision()) {
+              <button type="button" (click)="restore(r.revisionNumber)" [disabled]="busy() || !restoreReason.trim()">Als Entwurf wiederherstellen</button>
             }
           </td>
         </tr>
       }
     </tbody>
   </table>
+  @if (auth.canReview) {
+    <label>Entscheidungsgrund (bei Ablehnung erforderlich)
+      <input [(ngModel)]="decisionReason" maxlength="2000" name="decisionReason" />
+    </label>
+    <label>Grund für Wiederherstellung (erforderlich)
+      <input [(ngModel)]="restoreReason" maxlength="1950" name="restoreReason" />
+    </label>
+  }
 
   @if (editable() && auth.canWrite) {
-    <h3>Aktuelle Version bearbeiten @if (viewing !== null && viewing !== currentRevision()) { <small>(Ansicht von Revision {{ viewing }})</small> }</h3>
-    <textarea [(ngModel)]="text" name="text" rows="18" aria-label="Dokumentinhalt"></textarea>
-    <label>Kommentar <input [(ngModel)]="comment" name="comment" /></label>
-    <button type="button" (click)="save()" [disabled]="busy()">Als neue Revision speichern</button>
-    <button type="button" (click)="reload()" [disabled]="busy()">Neu laden</button>
-  } @else if (revisions().length > 0) {
+    <h3>Entwurf aus freigegebener Revision {{ currentRevision() }} erstellen</h3>
+    <textarea [(ngModel)]="text" name="text" rows="12" aria-label="Dokumentinhalt"></textarea>
+    <label>Änderungsgrund (erforderlich) <input [(ngModel)]="comment" maxlength="2000" name="comment" required /></label>
+    <div><button type="button" (click)="save()" [disabled]="busy() || !editorReady() || !comment.trim()">Entwurf speichern</button>
+      <button type="button" (click)="reload()" [disabled]="busy()">Neu laden</button></div>
+  } @else if (revisions().length > 0 && !editable()) {
     <p>Dieser Dateityp ist nicht als Text bearbeitbar. Nutzen Sie den Download.</p>
   }
+
+  @if (viewing !== null) {
+    <h3>Vergleich: freigegebene Revision {{ currentRevision() }} und Revision {{ viewing }}</h3>
+    @if (compareMessage()) { <p role="status">{{ compareMessage() }}</p> }
+    @if (compareReady()) {
+      <p>Rot: entfernt; Grün: hinzugefügt. Markieren Sie rechts eine Textstelle für einen Kommentar.</p>
+      <div class="comparison">
+        <div><h4>Freigegeben</h4><pre #left class="diff" aria-label="Freigegebene Revision" (scroll)="syncScroll(left, right)">@for (part of leftDiff(); track $index) {<span [class.removed]="part.changed" [attr.aria-label]="part.changed ? 'Entfernt: ' + part.text : null">{{ part.text }}</span>}</pre></div>
+        <div><h4>Revision {{ viewing }}</h4><pre #right class="diff" aria-label="Verglichene Revision" (scroll)="syncScroll(right, left)" (mouseup)="captureSelection(right)" (keyup)="captureSelection(right)" tabindex="0">@for (part of rightDiff(); track $index) {<span [class.added]="part.changed" [attr.aria-label]="part.changed ? 'Hinzugefügt: ' + part.text : null">{{ part.text }}</span>}</pre></div>
+      </div>
+      <section aria-label="Kontextkommentare">
+        <h4>Kontextkommentare</h4>
+        @if (auth.canWrite) {
+          @if (selection) { <p>Ausgewählt: <q>{{ selection.text }}</q></p> }
+          <label>Kommentar zur Auswahl <input [(ngModel)]="commentText" maxlength="2000" name="commentText" /></label>
+          <button type="button" (click)="addComment()" [disabled]="busy() || !selection || !commentText.trim()">Kommentieren</button>
+        }
+        @for (thread of roots(); track thread.id) {
+          <article class="thread">
+            <p><strong>{{ thread.actorName }}</strong> · {{ thread.createdAtUtc | date:'short' }} · {{ thread.resolved ? 'Erledigt' : 'Offen' }}</p>
+            <blockquote>{{ thread.selectedText }}</blockquote><p>{{ thread.text }}</p>
+            <button type="button" (click)="focusComment(right, thread)">Textstelle anzeigen</button>
+            @for (reply of replies(thread.id); track reply.id) {
+              <p><strong>{{ reply.actorName }}</strong>: {{ reply.text }} <small>{{ reply.createdAtUtc | date:'short' }}</small></p>
+            }
+            @if (auth.canWrite) {
+              <button type="button" (click)="resolve(thread)" [disabled]="busy()">{{ thread.resolved ? 'Wieder öffnen' : 'Als erledigt markieren' }}</button>
+              @if (!thread.resolved) {
+                <label>Antwort <input [(ngModel)]="replyText[thread.id]" [name]="'reply-' + thread.id" maxlength="2000" /></label>
+                <button type="button" (click)="addComment(thread.id)" [disabled]="busy() || !replyText[thread.id]?.trim()">Antworten</button>
+              }
+            }
+          </article>
+        }
+      </section>
+    }
+  }
+
+  <aside aria-label="Aktivitäten">
+    <h3>Aktivitäten</h3>
+    <label>Filter
+      <select [ngModel]="activityFilter()" (ngModelChange)="activityFilter.set($event)" name="activityFilter">
+        <option value="all">Alle</option><option value="revision">Entwürfe</option>
+        <option value="review">Freigaben</option><option value="comments">Kommentare</option>
+      </select>
+    </label>
+    @for (activity of visibleActivities(); track activity.id) {
+      <article class="activity">
+        <strong>{{ activity.actorName }}</strong> · Revision {{ activity.revisionNumber }} · {{ activityLabel(activity.action) }}
+        <time>{{ activity.createdAtUtc | date:'short' }}</time>
+        @if (activity.reason) { <p>Grund: {{ activity.reason }}</p> }
+        @if (activity.changes) { <p>{{ activityChanges(activity) }}</p> }
+      </article>
+    } @empty { <p>Noch keine Aktivitäten aufgezeichnet.</p> }
+  </aside>
 </section>

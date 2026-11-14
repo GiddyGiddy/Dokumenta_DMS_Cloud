@@ -1,123 +1,126 @@
+using System.Text;
+using System.Text.Json;
 using DocuManagementApp.Data;
 using DocuManagementApp.Models;
 using DocuManagementApp.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Xunit;
-using System.Text.Json;
-using System.Text;
 using OrchestratorService;
+using Xunit;
 
 namespace DocuManagementApp.Tests;
 
 public sealed class DocumentRevisionServiceTests
 {
-  private static (AppDbContext Db, DocumentRevisionService Svc, Guid Id, string TenantId) Create()
+  private static (AppDbContext Db, DocumentRevisionService Service, Guid Id, string Tenant) Create()
   {
     var options = new DbContextOptionsBuilder<AppDbContext>()
       .UseInMemoryDatabase(Guid.NewGuid().ToString())
-      .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-      .Options;
+      .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options;
     var db = new AppDbContext(options);
-    var tenantId = $"tenant:{Guid.NewGuid():D}";
+    var tenant = $"tenant:{Guid.NewGuid():D}";
     var doc = new DocumentRecord
     {
-      Id = Guid.NewGuid(),
-      TenantId = tenantId,
-      OriginalFileName = "a.txt",
-      ContentType = "text/plain",
-      FileContent = new byte[] { 1, 2, 3 },
-      SizeBytes = 3,
-      UploadedAtUtc = DateTimeOffset.UtcNow
+      TenantId = tenant, OriginalFileName = "a.txt", ContentType = "text/plain",
+      FileContent = Encoding.UTF8.GetBytes("original"), SizeBytes = 8
     };
     db.Documents.Add(doc);
     db.SaveChanges();
-    return (db, new DocumentRevisionService(db), doc.Id, tenantId);
+    return (db, new DocumentRevisionService(db), doc.Id, tenant);
   }
 
   [Fact]
-  public async Task FirstEdit_SnapshotsOriginalAndCreatesRevision2()
+  public async Task DraftOnlyPublishesAndEnqueuesAfterApproval()
   {
-    var (db, svc, id, tenantId) = Create();
-    var result = await svc.CreateAsync(id, tenantId, new byte[] { 9, 9 }, null, 1, "bob", "fix");
-
-    Assert.Equal(RevisionOutcome.Created, result.Outcome);
-    Assert.Equal(2, result.CurrentRevision);
-    var doc = await db.Documents.FindAsync(id);
-    Assert.Equal(new byte[] { 9, 9 }, doc!.FileContent);
+    var (db, service, id, tenant) = Create();
+    var draft = await service.CreateAsync(id, tenant, Encoding.UTF8.GetBytes("changed"), null, 1, "bob", "fix", actorId: "bob-id");
+    Assert.Equal("Draft", draft.Revision!.Status);
+    Assert.Equal(0, (await db.Documents.FindAsync(id))!.CurrentRevisionNumber);
+    Assert.Equal("original", Encoding.UTF8.GetString((await db.Documents.FindAsync(id))!.FileContent));
+    Assert.Empty(db.OutboxMessages);
+    Assert.Equal(RevisionOutcome.Conflict, (await service.TransitionAsync(id, 2, tenant, "approve", null, "reviewer", "reviewer")).Outcome);
+    Assert.Equal("InReview", (await service.TransitionAsync(id, 2, tenant, "submit", null, "bob-id", "bob")).Revision!.Status);
+    Assert.Empty(db.OutboxMessages);
+    Assert.Equal("Approved", (await service.TransitionAsync(id, 2, tenant, "approve", null, "reviewer", "reviewer")).Revision!.Status);
+    var doc = (await db.Documents.FindAsync(id))!;
     Assert.Equal(2, doc.CurrentRevisionNumber);
-    var original = await svc.GetAsync(id, 1, tenantId);
-    Assert.Equal(new byte[] { 1, 2, 3 }, original!.FileContent);
-    Assert.Equal(2, (await svc.ListAsync(id, tenantId))!.Count);
+    Assert.Equal("changed", Encoding.UTF8.GetString(doc.FileContent));
     var message = await db.OutboxMessages.SingleAsync();
-    Assert.Equal("document.revised", message.EventType);
-    Assert.Equal(doc.CorrelationId, message.CorrelationId);
     using var payload = JsonDocument.Parse(message.Payload);
-    Assert.Equal(tenantId, payload.RootElement.GetProperty("tenantId").GetString());
     Assert.Equal(2, payload.RootElement.GetProperty("revisionNumber").GetInt32());
-    Assert.Equal("bob", payload.RootElement.GetProperty("editedBy").GetString());
-    var parsed = OrchestrationEvent.Parse(Encoding.UTF8.GetBytes(message.Payload), null, null);
-    Assert.Equal(2, Assert.Single(parsed.Documents).RevisionNumber);
+    Assert.Equal(2, Assert.Single(OrchestrationEvent.Parse(Encoding.UTF8.GetBytes(message.Payload), null, null).Documents).RevisionNumber);
+    Assert.Equal(new[] { "draft_created", "submit", "approve" }, (await db.RevisionActivities.OrderBy(a => a.CreatedAtUtc).Select(a => a.Action).ToListAsync()).ToArray());
   }
 
   [Fact]
-  public async Task StaleExpectedRevision_ReturnsConflict()
+  public async Task CompetingProposalsCannotBothBeApproved()
   {
-    var (db, svc, id, tenantId) = Create();
-    await svc.CreateAsync(id, tenantId, new byte[] { 5 }, null, 1, "a", null);
-    var result = await svc.CreateAsync(id, tenantId, new byte[] { 6 }, null, 1, "b", null);
-
-    Assert.Equal(RevisionOutcome.Conflict, result.Outcome);
-    Assert.Equal(2, result.CurrentRevision);
+    var (db, service, id, tenant) = Create();
+    await service.CreateAsync(id, tenant, [1], null, 1, "a", "first");
+    await service.CreateAsync(id, tenant, [2], null, 1, "b", "second");
+    await service.TransitionAsync(id, 2, tenant, "submit", null, "a", "a");
+    await service.TransitionAsync(id, 3, tenant, "submit", null, "b", "b");
+    await service.TransitionAsync(id, 2, tenant, "approve", null, "r", "r");
+    Assert.Equal(RevisionOutcome.Conflict, (await service.TransitionAsync(id, 3, tenant, "approve", null, "r", "r")).Outcome);
+    Assert.Equal(RevisionOutcome.Invalid, (await service.TransitionAsync(id, 3, tenant, "reject", "", "r", "r")).Outcome);
+    Assert.Equal("Rejected", (await service.TransitionAsync(id, 3, tenant, "reject", "obsolete", "r", "r")).Revision!.Status);
     Assert.Single(db.OutboxMessages);
   }
 
   [Fact]
-  public async Task Restore_CreatesNewRevisionWithOldContent()
+  public async Task RestoreCreatesDraftWithoutChangingPublishedDocument()
   {
-    var (db, svc, id, tenantId) = Create();
-    await svc.CreateAsync(id, tenantId, new byte[] { 5 }, null, 1, "a", null);
-    var result = await svc.RestoreAsync(id, 1, tenantId, 2, "a");
-
-    Assert.Equal(RevisionOutcome.Created, result.Outcome);
-    Assert.Equal(3, result.CurrentRevision);
-    Assert.Equal(new byte[] { 1, 2, 3 }, (await db.Documents.FindAsync(id))!.FileContent);
-    var messages = await db.OutboxMessages.OrderBy(x => x.CreatedAtUtc).ToListAsync();
-    Assert.Equal(2, messages.Count);
-    using var restored = JsonDocument.Parse(messages[1].Payload);
-    Assert.Equal(3, restored.RootElement.GetProperty("revisionNumber").GetInt32());
-    Assert.Equal("Restored from revision 1", restored.RootElement.GetProperty("comment").GetString());
+    var (db, service, id, tenant) = Create();
+    await service.CreateAsync(id, tenant, [5], null, 1, "a", "change");
+    await service.TransitionAsync(id, 2, tenant, "submit", null, "a", "a");
+    await service.TransitionAsync(id, 2, tenant, "approve", null, "r", "r");
+    var restored = await service.RestoreAsync(id, 1, tenant, 2, "a", "rollback");
+    Assert.Equal("Draft", restored.Revision!.Status);
+    Assert.Equal(3, restored.Revision.RevisionNumber);
+    Assert.Equal(new byte[] { 5 }, (await db.Documents.FindAsync(id))!.FileContent);
+    Assert.Single(db.OutboxMessages);
   }
 
   [Fact]
-  public async Task UnknownDocument_ReturnsNotFound()
+  public async Task ValidatesReasonsAndTenantIsolation()
   {
-    var (_, svc, _, tenantId) = Create();
-    var result = await svc.CreateAsync(Guid.NewGuid(), tenantId, new byte[] { 1 }, null, 1, "a", null);
-    Assert.Equal(RevisionOutcome.NotFound, result.Outcome);
-    Assert.Null(await svc.ListAsync(Guid.NewGuid(), tenantId));
+    var (_, service, id, tenant) = Create();
+    var other = $"tenant:{Guid.NewGuid():D}";
+    Assert.Equal(RevisionOutcome.Invalid, (await service.CreateAsync(id, tenant, [1], null, 1, "a", " ")).Outcome);
+    Assert.Equal(RevisionOutcome.Invalid, (await service.CreateAsync(id, tenant, [], null, 1, "a", "reason")).Outcome);
+    Assert.Null(await service.ListAsync(id, other));
+    Assert.Null(await service.GetAsync(id, 1, other));
+    Assert.Equal(RevisionOutcome.NotFound, (await service.CreateAsync(id, other, [1], null, 1, "a", "reason")).Outcome);
+    Assert.Equal(RevisionOutcome.NotFound, (await service.TransitionAsync(id, 1, other, "approve", null, "a", "a")).Outcome);
   }
 
   [Fact]
-  public async Task EmptyContent_IsInvalid()
+  public async Task CommentsAreAnchoredAndTenantScoped()
   {
-    var (db, svc, id, tenantId) = Create();
-    var result = await svc.CreateAsync(id, tenantId, Array.Empty<byte>(), null, 1, "a", null);
-    Assert.Equal(RevisionOutcome.Invalid, result.Outcome);
-    Assert.Empty(db.OutboxMessages);
+    var (db, service, id, tenant) = Create();
+    await service.CreateAsync(id, tenant, Encoding.UTF8.GetBytes("hello world"), null, 1, "a", "edit");
+    var collaboration = new RevisionCollaborationService(db, service);
+    var root = await collaboration.AddCommentAsync(id, 2, tenant, null, 6, "world", "check", "a", "Alice", default);
+    Assert.NotNull(root);
+    await Assert.ThrowsAsync<ArgumentException>(() => collaboration.AddCommentAsync(id, 2, tenant, null, 0, "world", "wrong", "a", "Alice", default));
+    var reply = await collaboration.AddCommentAsync(id, 2, tenant, root!.Id, 0, "", "done", "b", "Bob", default);
+    Assert.Equal(root.Id, reply!.ParentId);
+    Assert.True(await collaboration.ResolveAsync(id, 2, tenant, root.Id, true, "b", "Bob", default));
+    await Assert.ThrowsAsync<ArgumentException>(() => collaboration.AddCommentAsync(id, 2, tenant, root.Id, 0, "", "late", "b", "Bob", default));
+    Assert.Null(await collaboration.CommentsAsync(id, 2, $"tenant:{Guid.NewGuid():D}", default));
+    Assert.Equal(2, (await collaboration.CommentsAsync(id, 2, tenant, default))!.Count);
   }
 
   [Fact]
-  public async Task TenantCannotReadOrModifyAnotherTenantsRevisions()
+  public async Task OriginalCanBeCommentedBeforeTheFirstDraft()
   {
-    var (_, svc, id, _) = Create();
-    var otherTenantId = $"tenant:{Guid.NewGuid():D}";
-
-    Assert.Null(await svc.ListAsync(id, otherTenantId));
-    Assert.Null(await svc.GetAsync(id, 1, otherTenantId));
-    Assert.Equal(RevisionOutcome.NotFound,
-      (await svc.CreateAsync(id, otherTenantId, new byte[] { 9 }, null, 1, "other", null)).Outcome);
-    Assert.Equal(RevisionOutcome.NotFound,
-      (await svc.RestoreAsync(id, 1, otherTenantId, 1, "other")).Outcome);
+    var (db, service, id, tenant) = Create();
+    var collaboration = new RevisionCollaborationService(db, service);
+    Assert.Empty((await collaboration.CommentsAsync(id, 1, tenant, default))!);
+    var comment = await collaboration.AddCommentAsync(id, 1, tenant, null, 0, "original", "review", "a", "Alice", default);
+    Assert.NotNull(comment);
+    Assert.Single(await collaboration.CommentsAsync(id, 1, tenant, default));
+    Assert.Equal("Draft", (await service.CreateAsync(id, tenant, [1], null, 1, "a", "edit")).Revision!.Status);
+    Assert.Equal(2, await db.DocumentRevisions.CountAsync());
   }
 }

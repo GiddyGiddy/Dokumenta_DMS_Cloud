@@ -20,6 +20,41 @@ public sealed class ApiPostgresRevisionFactAttribute : FactAttribute
 public sealed class RevisionOutboxPostgresTests
 {
     [ApiPostgresRevisionFact]
+    public async Task CompetingApprovalsPublishOnlyOneRevision()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(Environment.GetEnvironmentVariable("DOCUMENTA_TEST_API_POSTGRES")).Options;
+        var tenant = $"tenant:{Guid.NewGuid():D}";
+        Guid documentId;
+        await using (var setup = new AppDbContext(options))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var document = new DocumentRecord { TenantId = tenant, ContentType = "text/plain", FileContent = [1], SizeBytes = 1 };
+            setup.Documents.Add(document);
+            await setup.SaveChangesAsync();
+            documentId = document.Id;
+            var revisions = new DocumentRevisionService(setup);
+            await revisions.CreateAsync(documentId, tenant, [2], null, 1, "a", "first");
+            await revisions.CreateAsync(documentId, tenant, [3], null, 1, "b", "second");
+            await revisions.TransitionAsync(documentId, 2, tenant, "submit", null, "a", "a");
+            await revisions.TransitionAsync(documentId, 3, tenant, "submit", null, "b", "b");
+        }
+
+        async Task<RevisionResult> Approve(int number)
+        {
+            await using var db = new AppDbContext(options);
+            return await new DocumentRevisionService(db).TransitionAsync(documentId, number, tenant, "approve", null, "reviewer", "reviewer");
+        }
+
+        var results = await Task.WhenAll(Approve(2), Approve(3));
+        Assert.Single(results.Where(r => r.Outcome == RevisionOutcome.Created));
+        Assert.Single(results.Where(r => r.Outcome == RevisionOutcome.Conflict));
+        await using var check = new AppDbContext(options);
+        Assert.Equal(1, await check.OutboxMessages.CountAsync(m => m.DocumentId == documentId));
+        Assert.Equal(1, await check.DocumentRevisions.CountAsync(r => r.DocumentId == documentId && r.RevisionNumber > 1 && r.Status == "Approved"));
+    }
+
+    [ApiPostgresRevisionFact]
     public async Task RevisionAndOutboxAreCommittedAndClaimedWithOriginalCorrelation()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -39,10 +74,14 @@ public sealed class RevisionOutboxPostgresTests
         db.Documents.Add(document);
         await db.SaveChangesAsync();
 
-        var result = await new DocumentRevisionService(db).CreateAsync(
-            document.Id, tenantId, [2], "text/plain", 1, "editor", null);
+        var revisions = new DocumentRevisionService(db);
+        var result = await revisions.CreateAsync(
+            document.Id, tenantId, [2], "text/plain", 1, "editor", "edit");
 
         Assert.Equal(RevisionOutcome.Created, result.Outcome);
+        Assert.Empty(await new EfOutboxStore(db).ClaimDueAsync(10, TimeSpan.FromMinutes(1), CancellationToken.None));
+        await revisions.TransitionAsync(document.Id, 2, tenantId, "submit", null, "editor", "editor");
+        await revisions.TransitionAsync(document.Id, 2, tenantId, "approve", null, "reviewer", "reviewer");
         var claimed = await new EfOutboxStore(db).ClaimDueAsync(10, TimeSpan.FromMinutes(1), CancellationToken.None);
         var message = Assert.Single(claimed.Where(m => m.DocumentId == document.Id));
         Assert.Equal(document.CorrelationId, message.CorrelationId);

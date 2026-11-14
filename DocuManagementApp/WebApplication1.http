@@ -1,6 +1,68 @@
 @WebApplication1_HostAddress = http://localhost:5176
 
-GET {{WebApplication1_HostAddress}}/weatherforecast/
-Accept: application/json
+@token = replace-with-entra-access-token
+@documentId = 00000000-0000-0000-0000-000000000001
+@revision = 2
+@commentId = 00000000-0000-0000-0000-000000000002
 
+### Create a draft (content is UTF-8 "Hello world")
+POST {{WebApplication1_HostAddress}}/api/documents/{{documentId}}/revisions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"contentBase64":"SGVsbG8gd29ybGQ=","contentType":"text/plain","expectedRevision":1,"comment":"Correct wording"}
+
+### Submit draft
+POST {{WebApplication1_HostAddress}}/api/documents/{{documentId}}/revisions/{{revision}}/submit
+Authorization: Bearer {{token}}
+
+### Approve (Reviewer or Admin)
+POST {{WebApplication1_HostAddress}}/api/documents/{{documentId}}/revisions/{{revision}}/approve
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"reason":null}
+
+### Reject (Reviewer or Admin; reason required)
+POST {{WebApplication1_HostAddress}}/api/documents/{{documentId}}/revisions/{{revision}}/reject
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"reason":"Clarification needed"}
+
+### Create a restoration draft
+POST {{WebApplication1_HostAddress}}/api/documents/{{documentId}}/revisions/1/restore
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"expectedRevision":2,"reason":"Restore prior wording"}
+
+### Activity feed
+GET {{WebApplication1_HostAddress}}/api/documents/{{documentId}}/revisions/activity
+Authorization: Bearer {{token}}
+
+### List comments
+GET {{WebApplication1_HostAddress}}/api/documents/{{documentId}}/revisions/{{revision}}/comments
+Authorization: Bearer {{token}}
+
+### Comment on "world"
+POST {{WebApplication1_HostAddress}}/api/documents/{{documentId}}/revisions/{{revision}}/comments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"parentId":null,"startOffset":6,"selectedText":"world","text":"Please review this word."}
+
+### Reply to a thread
+POST {{WebApplication1_HostAddress}}/api/documents/{{documentId}}/revisions/{{revision}}/comments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"parentId":"{{commentId}}","startOffset":0,"selectedText":"","text":"Updated in the next draft."}
+
+### Resolve a thread
+POST {{WebApplication1_HostAddress}}/api/documents/{{documentId}}/revisions/{{revision}}/comments/{{commentId}}/resolution
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"resolved":true}
 ###

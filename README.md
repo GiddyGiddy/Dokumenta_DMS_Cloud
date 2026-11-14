@@ -49,7 +49,7 @@ RabbitMQ is an internal Container App used for the asynchronous event flow. `ver
 
 - **Document management:** authenticated upload, listing, download, conversion endpoints, and document metadata.
 - **Private file storage:** documents are stored in Blob Storage in Azure; local development can use the local configuration.
-- **Revisions:** view revision history, save edited revisions, and restore earlier versions.
+- **Revisions:** create text drafts, submit them for review, compare versions, discuss selected text, and approve or reject changes. Restoring an older revision creates a draft.
 - **Asynchronous processing:** transactional outboxes and RabbitMQ queues decouple ingestion, orchestration, extraction, and indexing.
 - **Classification and extraction:** rule-based classification routes known document types. Azure Document Intelligence produces layout text; an LLM can classify unknown document kinds and extract or correct structured data with validators.
 - **Search:** deterministic filters, hybrid semantic search, and optional agentic search. Search chunks and vectors are stored in PostgreSQL rather than Azure AI Search. The UI lists each matching source document once (best-scoring hit) with links to open the original or edit it in the revision review; chunk text is not shown.
@@ -63,6 +63,10 @@ The API derives ownership from the authenticated Entra token; clients do not cho
 - Personal Microsoft accounts are scoped to the individual account (`oid`, with a hashed `sub` fallback), rather than sharing a single personal-account tenant.
 - Document reads, downloads, revisions, and search are tenant-filtered. A document without a trusted tenant owner is not exposed as shared data.
 - The API enforces the `Viewer`, `Contributor`, `Reviewer`, and `Admin` application roles through the `DmsRead`, `DmsWrite`, `DmsReview`, and `DmsAdmin` policies.
+
+Revision authors and reviewers can be the same person. Drafts require a reason; rejection also requires a reason. Only approval publishes the revision and queues reprocessing. A proposal based on an outdated approved version cannot be submitted or approved; create a new draft from the current version. The activity feed records new actions from the workflow onward, not historical events predating this feature. Comments refer to immutable revision text. Comparison and comments support UTF-8 text-like documents; PDF and Office files remain downloadable but are not compared or annotated here. The comparison highlights changed lines; exceptionally large changed sections are shown without highlighting to keep the browser responsive.
+
+Apply the `AddRevisionWorkflow` database migration before deploying the updated API and UI. Existing revisions are treated as approved; the migration creates the activity and comment tables without backfilling past events. Audit entries are retained by the application and document deletion is restricted while they exist; database access, retention and archival policies must be managed operationally.
 
 Legacy documents that have no tenant ownership must be assigned through a trusted migration before they can be accessed under tenant isolation.
 
@@ -142,6 +146,6 @@ terraform fmt -check -recursive
 
 
 - **PostgreSQL networking:** the current server is publicly reachable through its Azure-services firewall rule. Prefer private networking and narrower access controls for hardened production deployments.
-- **Revision indexing:** saving a revision does not automatically trigger re-extraction or re-indexing.
+- **Revision indexing:** approval queues re-extraction and re-indexing; completion depends on the configured workers and extraction pipeline.
 - **Legacy ownership:** documents created before tenant ownership was added need trusted ownership mapping before they can be accessed.
 

@@ -26,7 +26,7 @@ public sealed class RevisionServiceContentTests
         db.Documents.Add(document);
         await db.SaveChangesAsync();
         var service = new DocumentRevisionService(db);
-        await service.CreateAsync(document.Id, tenant, [2], null, 1, "editor", null);
+        await service.CreateAsync(document.Id, tenant, [2], null, 1, "editor", "edit");
         var controller = new DocumentRevisionsController(service)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
@@ -42,6 +42,7 @@ public sealed class RevisionServiceContentTests
         controller.Request.Headers["X-Tenant-Id"] = $"tenant:{Guid.NewGuid():D}";
         Assert.IsType<NotFoundResult>(await controller.ServiceContent(document.Id, 1, config, CancellationToken.None));
         controller.Request.Headers["X-Tenant-Id"] = tenant;
+        Assert.IsType<NotFoundResult>(await controller.ServiceContent(document.Id, 2, config, CancellationToken.None));
         var result = Assert.IsType<FileContentResult>(await controller.ServiceContent(document.Id, 1, config, CancellationToken.None));
         Assert.Equal(new byte[] { 1 }, result.FileContents);
     }
