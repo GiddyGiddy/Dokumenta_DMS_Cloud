@@ -42,7 +42,7 @@ export interface UploadReceipt {
 export class FileUploadService {
   constructor(private httpClient: HttpClient) { }
 
-  postFile(fileToUpload: File, archiveAsPdfA = false): Observable<UploadReceipt | null> {
+  postFile(fileToUpload: File, archiveAsPdfA = false): Observable<UploadReceipt> {
     const endpoint = `${environment.apiURL}/fileupload/upload`;
     return from(fileToUpload.arrayBuffer()).pipe(
       switchMap((buffer: ArrayBuffer) => {
@@ -54,12 +54,7 @@ export class FileUploadService {
           contentType: fileToUpload.type || 'application/octet-stream',
           archiveAsPdfA,
         };
-      console.log('Uploading file to endpoint:', endpoint, 'with payload:', payload);
         return this.httpClient.post<UploadReceipt>(endpoint, payload);
-      }),
-      catchError((error) => {
-        console.error('File upload error:', error);
-        return of(null);
       })
     );
   }
@@ -81,12 +76,7 @@ export class FileUploadService {
 
   getUploadedFiles(): Observable<UploadedFileInfo[]> {
     const endpoint = `${environment.apiURL}/fileupload/files`;
-    return this.httpClient.get<UploadedFileInfo[]>(endpoint).pipe(
-      catchError((error) => {
-        console.error('Failed to load uploaded files:', error);
-        return of([]);
-      })
-    );
+    return this.httpClient.get<UploadedFileInfo[]>(endpoint);
   }
 
   fetchFile(storedFileName: string): Observable<Blob> {

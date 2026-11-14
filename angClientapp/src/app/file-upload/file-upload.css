@@ -38,6 +38,29 @@
   color: #374151;
 }
 
+.upload-queue {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  padding: 0;
+}
+
+.upload-queue li {
+  padding: 0.65rem;
+  border: 1px solid #eee9e2;
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+
+.queue-message {
+  margin: 0.4rem 0;
+  font-size: 0.85rem;
+}
+
+.status-error {
+  color: #b91c1c;
+}
+
 .archive-option {
   display: flex;
   align-items: flex-start;
