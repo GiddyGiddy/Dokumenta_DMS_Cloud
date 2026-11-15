@@ -55,7 +55,7 @@ public sealed class RevisionOrchestrationPostgresTests
             documentId, ids[1], "extraction", null, "Old revision failed", tenantId), CancellationToken.None);
         await database.ProcessAsync(new OrchestrationEvent(
             Guid.NewGuid(), correlationId, "document.task.completed", 1, [],
-            documentId, ids[3], "extraction", "http://example.test/artifact", null, tenantId), CancellationToken.None);
+            documentId, ids[3], "extraction", "http://example.test/artifact", null, tenantId, "IdentityDocument"), CancellationToken.None);
 
         await using var check = new NpgsqlCommand("""
             SELECT w.status, w.revision_number, t.task_id, o.payload::text
@@ -74,6 +74,7 @@ public sealed class RevisionOrchestrationPostgresTests
             searchTaskId = reader.GetGuid(2);
             using var payload = JsonDocument.Parse(reader.GetString(3));
             Assert.Equal(3, payload.RootElement.GetProperty("revisionNumber").GetInt32());
+            Assert.Equal("IdentityDocument", payload.RootElement.GetProperty("documentKind").GetString());
             Assert.False(await reader.ReadAsync());
         }
 

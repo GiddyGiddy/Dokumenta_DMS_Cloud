@@ -94,7 +94,7 @@ public static class SupportedDocumentKinds
     [Invoice, Contract, IdentityDocument, FinancialStatement, Pdf, Image, Spreadsheet, Text, Unknown];
 }
 
-public sealed record DocumentClassification(string Kind, double Confidence, string Reason);
+public sealed record DocumentClassification(string Kind, double Confidence, string Reason, string? Evidence = null);
 
 public abstract record DocumentExtractionOutcome(int Attempts, string DocumentKind)
 {
@@ -108,7 +108,10 @@ public sealed record NeedsClassification(
 public sealed record ExtractionSuccess(
     int Attempts,
     string DocumentKind,
-    string Json) : DocumentExtractionOutcome(Attempts, DocumentKind);
+    string Json) : DocumentExtractionOutcome(Attempts, DocumentKind)
+{
+    public IReadOnlyDictionary<string, string>? NormalizedSourceValues { get; init; }
+}
 
 public sealed record ExtractionFailed(
     int Attempts,

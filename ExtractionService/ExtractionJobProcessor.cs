@@ -11,6 +11,9 @@ public sealed class ExtractionProcessingOptions
     public int RetryBaseSeconds { get; set; } = 5;
     public int RetryMaxSeconds { get; set; } = 60;
     public double ClassificationConfidenceThreshold { get; set; } = 0.7;
+    public bool ClassifyKnownKinds { get; set; } = true;
+    public bool RequireSourceTextEvidence { get; set; } = true;
+    public bool RequireNormalizedSourceValues { get; set; } = true;
 }
 
 public sealed class ExtractionLayoutPipeline(
@@ -41,8 +44,12 @@ public sealed class ExtractionLayoutPipeline(
             DocumentClassification? classification = null;
             var alreadyStructured = DocumentExtractionSchemas.TryNormalizeKind(kind, out var known) &&
                 SupportedDocumentKinds.Structured.Contains(known);
-            if (!alreadyStructured && classifier is not null)
+            if (!alreadyStructured || settings.ClassifyKnownKinds)
             {
+                if (classifier is null)
+                {
+                    throw new InvalidOperationException("Content classification is required but no classifier is configured.");
+                }
                 classification = await classifier.ClassifyAsync(layout.Markdown, cancellationToken);
                 if (classification.Confidence < settings.ClassificationConfidenceThreshold ||
                     !SupportedDocumentKinds.Structured.Contains(classification.Kind))

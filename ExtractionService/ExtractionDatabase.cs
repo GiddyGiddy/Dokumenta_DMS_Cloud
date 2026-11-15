@@ -64,6 +64,7 @@ public sealed class ExtractionDatabase(
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS layout_markdown text NULL;
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS layout_json jsonb NULL;
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS extraction_json jsonb NULL;
+            ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS normalized_source_values jsonb NULL;
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS extraction_candidate text NULL;
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS extraction_attempts integer NOT NULL DEFAULT 0;
             ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS next_attempt_at_utc timestamptz NOT NULL DEFAULT now();
@@ -251,7 +252,7 @@ public sealed class ExtractionDatabase(
         var attempts = outcome.Attempts;
         var classificationInfo = outcome.Classification is null
             ? null
-            : new { kind = outcome.Classification.Kind, confidence = outcome.Classification.Confidence, reason = outcome.Classification.Reason };
+            : new { kind = outcome.Classification.Kind, confidence = outcome.Classification.Confidence, reason = outcome.Classification.Reason, evidence = outcome.Classification.Evidence };
         var payload = outcome switch
         {
             ExtractionSuccess success => JsonSerializer.Serialize(new
@@ -309,6 +310,7 @@ public sealed class ExtractionDatabase(
                 layout_markdown = @markdown,
                 layout_json = @layout_json,
                 extraction_json = @extraction_json,
+                normalized_source_values = @normalized_source_values,
                 extraction_candidate = @candidate,
                 extraction_attempts = @attempts,
                 failure_summary = @failure_summary,
@@ -328,6 +330,9 @@ public sealed class ExtractionDatabase(
             update.Parameters.AddWithValue("markdown", layout.Markdown);
             update.Parameters.AddWithValue("layout_json", NpgsqlDbType.Jsonb, layout.RawJson);
             update.Parameters.AddWithValue("extraction_json", NpgsqlDbType.Jsonb, (object?)outputJson ?? DBNull.Value);
+            var sourceValues = (outcome as ExtractionSuccess)?.NormalizedSourceValues;
+            update.Parameters.AddWithValue("normalized_source_values", NpgsqlDbType.Jsonb,
+                sourceValues is null ? DBNull.Value : JsonSerializer.Serialize(sourceValues));
             update.Parameters.AddWithValue("candidate", (object?)candidateJson ?? DBNull.Value);
             update.Parameters.AddWithValue("attempts", attempts);
             update.Parameters.AddWithValue("failure_summary", (object?)failureSummary ?? DBNull.Value);
@@ -364,7 +369,7 @@ public sealed class ExtractionDatabase(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             SELECT task_id, correlation_id, document_id, COALESCE(classified_kind, document_kind), layout_markdown,
-                   layout_json::text, extraction_json::text, extraction_attempts, updated_at_utc
+                   layout_json::text, extraction_json::text, extraction_attempts, updated_at_utc, normalized_source_values::text
             FROM extraction_jobs
             WHERE task_id = @task_id AND status = 'ExtractionSucceeded';
             """, connection);
@@ -377,6 +382,10 @@ public sealed class ExtractionDatabase(
 
         using var layoutJson = JsonDocument.Parse(reader.GetString(5));
         using var extractionJson = JsonDocument.Parse(reader.GetString(6));
+        var sourceValues = reader.IsDBNull(9)
+            ? new Dictionary<string, string>()
+            : JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(9))
+                ?? throw new InvalidDataException("Normalized source values must be a JSON object.");
         return new ExtractionArtifact(
             reader.GetGuid(0),
             reader.GetGuid(1),
@@ -386,7 +395,9 @@ public sealed class ExtractionDatabase(
             layoutJson.RootElement.Clone(),
             extractionJson.RootElement.Clone(),
             reader.GetInt32(7),
-            reader.GetFieldValue<DateTimeOffset>(8));
+            reader.GetFieldValue<DateTimeOffset>(8),
+            DocumentSourceEvidence.Collect(reader.GetString(6), reader.GetString(4), layoutJson.RootElement),
+            DocumentSourceEvidence.CollectNormalizedValues(sourceValues, layoutJson.RootElement));
     }
 
     public async Task MarkLayoutFailedAsync(

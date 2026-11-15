@@ -58,6 +58,24 @@ public sealed class OrchestratorServiceTests
         Assert.Equal(1200, document.SizeBytes);
     }
 
+    [Fact]
+    public void EventParserReadsExtractionDocumentKind()
+    {
+        var payload = $$"""
+            {
+              "eventId": "{{Guid.NewGuid():D}}",
+              "correlationId": "{{Guid.NewGuid():D}}",
+              "eventType": "document.task.completed",
+              "schemaVersion": 1,
+              "taskType": "extraction",
+              "documentKind": "Invoice"
+            }
+            """;
+
+        var message = OrchestrationEvent.Parse(Encoding.UTF8.GetBytes(payload), null, null);
+        Assert.Equal("Invoice", message.DocumentKind);
+    }
+
       [Fact]
       public void EventParserRejectsUnsupportedSchemaVersion()
       {

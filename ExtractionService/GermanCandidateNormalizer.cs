@@ -13,7 +13,7 @@ namespace ExtractionService;
 public static class GermanCandidateNormalizer
 {
     private static readonly string[] DateFormats =
-        ["yyyy-MM-dd", "dd.MM.yyyy", "d.M.yyyy", "dd.MM.yy", "d.M.yy", "dd/MM/yyyy", "d/M/yyyy"];
+        ["yyyy-MM-dd", "dd.MM.yyyy", "d.M.yyyy", "dd/MM/yyyy", "d/M/yyyy", "MM/dd/yyyy", "M/d/yyyy"];
 
     private static readonly HashSet<string> DateProperties = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -30,7 +30,7 @@ public static class GermanCandidateNormalizer
     private static readonly Dictionary<string, string> CurrencyAliases = new(StringComparer.OrdinalIgnoreCase)
     {
         ["€"] = "EUR", ["euro"] = "EUR", ["eur"] = "EUR",
-        ["$"] = "USD", ["us-dollar"] = "USD", ["dollar"] = "USD",
+        ["us-dollar"] = "USD",
         ["£"] = "GBP", ["pfund"] = "GBP",
         ["fr."] = "CHF", ["sfr"] = "CHF", ["franken"] = "CHF", ["schweizer franken"] = "CHF"
     };
@@ -60,6 +60,8 @@ public static class GermanCandidateNormalizer
 
     private static readonly Regex ThinkBlock = new("<think>.*?</think>", RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex ThousandsOnly = new(@"^-?\d{1,3}(\.\d{3})+$", RegexOptions.Compiled);
+    private static readonly Regex AmbiguousNumber = new(@"^\d{1,3}[.,]\d{3}$", RegexOptions.Compiled);
+    private static readonly Regex NumericDate = new(@"^(\d{1,2})[./](\d{1,2})[./]\d{2,4}$", RegexOptions.Compiled);
     private static readonly Regex NonNumeric = new(@"[^0-9,.\-]", RegexOptions.Compiled);
 
     public static string Normalize(string kind, string candidateJson)
@@ -98,11 +100,11 @@ public static class GermanCandidateNormalizer
     {
         foreach (var property in obj.ToList())
         {
-            var key = property.Key.Replace(" ", string.Empty).Replace("_", string.Empty);
-            if (KeyAliases.TryGetValue(key, out var english) && !obj.ContainsKey(english))
+            var canonical = CanonicalPropertyName(property.Key);
+            if (canonical != property.Key && !obj.ContainsKey(canonical))
             {
                 obj.Remove(property.Key);
-                obj[english] = property.Value;
+                obj[canonical] = property.Value;
             }
         }
 
@@ -128,6 +130,17 @@ public static class GermanCandidateNormalizer
         }
     }
 
+    internal static string CanonicalPropertyName(string name)
+    {
+        var key = name.Replace(" ", string.Empty).Replace("_", string.Empty);
+        if (KeyAliases.TryGetValue(key, out var alias)) return alias;
+        if (DateProperties.TryGetValue(name, out var date)) return date;
+        if (NumberProperties.TryGetValue(name, out var number)) return number;
+        if (name.Equals("currency", StringComparison.OrdinalIgnoreCase)) return "currency";
+        if (name.Equals("lineItems", StringComparison.OrdinalIgnoreCase)) return "lineItems";
+        return name;
+    }
+
     public static string StripNoise(string text)
     {
         text = ThinkBlock.Replace(text, string.Empty).Trim();
@@ -148,6 +161,14 @@ public static class GermanCandidateNormalizer
     {
         iso = null;
         var cleaned = raw.Trim().TrimEnd('.');
+        var parts = NumericDate.Match(cleaned);
+        if (parts.Success &&
+            int.Parse(parts.Groups[1].Value, CultureInfo.InvariantCulture) <= 12 &&
+            int.Parse(parts.Groups[2].Value, CultureInfo.InvariantCulture) <= 12 &&
+            parts.Groups[1].Value.TrimStart('0') != parts.Groups[2].Value.TrimStart('0'))
+        {
+            return false;
+        }
         if (DateOnly.TryParseExact(cleaned, DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
         {
             iso = JsonValue.Create(date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
@@ -164,6 +185,11 @@ public static class GermanCandidateNormalizer
         var negative = text.StartsWith('(') && text.EndsWith(')') || text.EndsWith('-');
         text = NonNumeric.Replace(text, string.Empty).Trim('-');
         if (text.Length == 0)
+        {
+            return false;
+        }
+
+        if (AmbiguousNumber.IsMatch(text))
         {
             return false;
         }

@@ -159,6 +159,73 @@ public sealed class FoundryDocumentAgentTests
         Assert.Equal(0, result.Confidence);
     }
 
+    [Fact]
+    public async Task ClassificationSamplesBeginningMiddleAndEnd()
+    {
+        string? userMessage = null;
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            using var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+            userMessage = body.RootElement.GetProperty("messages")[1].GetProperty("content").GetString();
+            return Task.FromResult(ChatResponse("{\"kind\":\"Unknown\",\"confidence\":0,\"reason\":\"uncertain\"}"));
+        });
+        using var httpClient = new HttpClient(handler);
+        var agent = CreateAgent(httpClient, new FoundryModelOptions
+        {
+            Provider = "FoundryLocal",
+            FoundryLocal = new FoundryLocalModelOptions { ModelName = "model" }
+        });
+        var document = "START " + new string('a', 5000) + " MIDDLE " + new string('b', 5000) + " END";
+
+        await agent.ClassifyAsync(document, CancellationToken.None);
+
+        Assert.Contains("START", userMessage);
+        Assert.Contains("MIDDLE", userMessage);
+        Assert.Contains("END", userMessage);
+    }
+
+    [Theory]
+    [InlineData("Rechnung für Beratung", "Rechnung", "Invoice")]
+    [InlineData("Invoice for consulting", "Invoice", "Invoice")]
+    [InlineData("Rechnung für Beratung", "Invoice", "Unknown")]
+    public async Task ClassificationRequiresEvidenceFromTheSource(string source, string evidence, string expectedKind)
+    {
+        var response = JsonSerializer.Serialize(new { kind = "Invoice", confidence = 0.9, reason = "invoice", evidence });
+        using var httpClient = new HttpClient(new StubHttpMessageHandler((_, _) => Task.FromResult(ChatResponse(response))));
+        var agent = CreateAgent(httpClient, new FoundryModelOptions
+        {
+            Provider = "FoundryLocal",
+            FoundryLocal = new FoundryLocalModelOptions { ModelName = "model" }
+        });
+
+        var classification = await agent.ClassifyAsync(source, CancellationToken.None);
+        Assert.Equal(expectedKind, classification.Kind);
+    }
+
+    [Fact]
+    public async Task ExtractionAndCorrectionRequestOriginalNumericAndDateStrings()
+    {
+        var prompts = new List<string>();
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            using var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+            prompts.Add(body.RootElement.GetProperty("messages")[0].GetProperty("content").GetString()!);
+            return Task.FromResult(ChatResponse("{}"));
+        });
+        using var httpClient = new HttpClient(handler);
+        var agent = CreateAgent(httpClient, new FoundryModelOptions
+        {
+            Provider = "FoundryLocal",
+            FoundryLocal = new FoundryLocalModelOptions { ModelName = "model" }
+        });
+
+        await agent.ExtractAsync("Invoice", "Rechnung", CancellationToken.None);
+        await agent.CorrectAsync("Invoice", "Rechnung", "{}", [], CancellationToken.None);
+
+        Assert.All(prompts, prompt => Assert.Contains("copy the complete original value", prompt));
+        Assert.All(prompts, prompt => Assert.DoesNotContain("Amounts and quantities are JSON numbers", prompt));
+    }
+
     private sealed class StubHttpMessageHandler(
         Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> sendAsync) : HttpMessageHandler
     {

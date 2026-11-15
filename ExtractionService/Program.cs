@@ -71,6 +71,7 @@ builder.Services.AddOptions<ExtractionProcessingOptions>()
     .Bind(builder.Configuration.GetSection("ExtractionProcessing"))
     .Validate(options => options.PollIntervalSeconds > 0 && options.LeaseSeconds > 0 && options.MaxLayoutAttempts > 0, "Extraction poll interval, lease, and max attempts must be positive.")
     .Validate(options => options.RetryBaseSeconds > 0 && options.RetryMaxSeconds >= options.RetryBaseSeconds, "Extraction retry settings must be positive and RetryMaxSeconds must be at least RetryBaseSeconds.")
+    .Validate(options => double.IsFinite(options.ClassificationConfidenceThreshold) && options.ClassificationConfidenceThreshold is >= 0 and <= 1, "Classification confidence threshold must be between zero and one.")
     .Validate(options => !options.EnableModelExtraction || FoundryDocumentAgent.IsConfigured(builder.Configuration.GetSection("Foundry").Get<FoundryModelOptions>() ?? new FoundryModelOptions()), "Model extraction is enabled but the selected Foundry endpoint/model is not configured.")
     .ValidateOnStart();
 builder.Services.AddSingleton<IExtractionJobStore>(serviceProvider => serviceProvider.GetRequiredService<ExtractionDatabase>());

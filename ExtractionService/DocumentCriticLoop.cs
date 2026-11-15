@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+
 namespace ExtractionService;
 
 public interface IDocumentExtractionAgent
@@ -23,7 +25,8 @@ public interface IDocumentCorrectionAgent
 public sealed class DocumentCriticLoop(
     IDocumentExtractionAgent extractionAgent,
     IDocumentCorrectionAgent correctionAgent,
-    DocumentExtractionValidator validator)
+    DocumentExtractionValidator validator,
+    IOptions<ExtractionProcessingOptions>? options = null)
 {
     private const int MaximumAttempts = 3;
 
@@ -33,11 +36,26 @@ public sealed class DocumentCriticLoop(
         var candidateJson = await extractionAgent.ExtractAsync(normalizedKind, markdown, cancellationToken);
         for (var attempt = 1; attempt <= MaximumAttempts; attempt++)
         {
-            candidateJson = validator.Normalize(normalizedKind, candidateJson);
-            var issues = validator.Validate(normalizedKind, candidateJson);
+            var requireSourceValues = options?.Value.RequireNormalizedSourceValues ?? true;
+            IReadOnlyList<ExtractionValidationIssue> issues = requireSourceValues
+                ? DocumentNormalizedSourceValues.Validate(candidateJson, markdown, normalizedKind)
+                : [];
+            var normalizedJson = candidateJson;
             if (issues.Count == 0)
             {
-                return new ExtractionSuccess(attempt, normalizedKind, candidateJson);
+                normalizedJson = validator.Normalize(normalizedKind, candidateJson);
+                issues = validator.Validate(normalizedKind, normalizedJson);
+            }
+            if (issues.Count == 0 && (options?.Value.RequireSourceTextEvidence ?? true))
+            {
+                issues = DocumentSourceEvidence.Validate(normalizedJson, markdown);
+            }
+            if (issues.Count == 0)
+            {
+                return new ExtractionSuccess(attempt, normalizedKind, normalizedJson)
+                {
+                    NormalizedSourceValues = requireSourceValues ? DocumentNormalizedSourceValues.Extract(candidateJson) : null
+                };
             }
 
             if (attempt == MaximumAttempts)

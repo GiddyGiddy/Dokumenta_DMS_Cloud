@@ -11,7 +11,9 @@ public sealed record ExtractionArtifact(
     JsonElement Layout,
     JsonElement ExtractionResult,
     int Attempts,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    IReadOnlyList<SourceTextEvidence> SourceEvidence,
+    IReadOnlyList<SourceTextEvidence> NormalizedValueEvidence);
 
 public static class ExtractionArtifactReference
 {

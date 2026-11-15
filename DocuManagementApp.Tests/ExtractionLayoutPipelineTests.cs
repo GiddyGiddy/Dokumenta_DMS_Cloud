@@ -41,7 +41,7 @@ public sealed class ExtractionLayoutPipelineTests
             var store = new FakeJobStore();
             var pipeline = CreatePipeline(
                 new FakeContentClient(),
-                new FakeLayoutClient(new DocumentLayoutResult("# Invoice", "{\"analyzeResult\":{\"content\":\"# Invoice\"}}")),
+                new FakeLayoutClient(new DocumentLayoutResult("# Invoice\nExample Supplies INV-100 Paper", "{\"analyzeResult\":{\"content\":\"# Invoice\"}}")),
                 store,
                 enableModelExtraction: true);
 
@@ -56,23 +56,26 @@ public sealed class ExtractionLayoutPipelineTests
         IDocumentLayoutClient layoutClient,
             FakeJobStore store,
             bool enableModelExtraction = false,
-            IDocumentClassifierAgent? classifier = null)
+            IDocumentClassifierAgent? classifier = null,
+            bool classifyKnownKinds = true)
     {
             var fakeAgent = new FakeInvoiceAgent();
         return new ExtractionLayoutPipeline(
             contentClient,
             layoutClient,
-                new DocumentCriticLoop(fakeAgent, fakeAgent, new DocumentExtractionValidator()),
+                new DocumentCriticLoop(fakeAgent, fakeAgent, new DocumentExtractionValidator(),
+                    Options.Create(new ExtractionProcessingOptions { RequireNormalizedSourceValues = false })),
             store,
             Options.Create(new ExtractionProcessingOptions
             {
                     EnableModelExtraction = enableModelExtraction,
+                ClassifyKnownKinds = classifyKnownKinds,
                 MaxLayoutAttempts = 3,
                 RetryBaseSeconds = 1,
                 RetryMaxSeconds = 5
             }),
             NullLogger<ExtractionLayoutPipeline>.Instance,
-            classifier);
+            classifier ?? new FakeClassifier(new DocumentClassification("Invoice", 0.95, "invoice")));
     }
 
     private static ExtractionJob CreateJob(int attemptCount = 1, string kind = "Invoice")
@@ -103,7 +106,7 @@ public sealed class ExtractionLayoutPipelineTests
         var store = new FakeJobStore();
         var pipeline = CreatePipeline(
             new FakeContentClient(),
-            new FakeLayoutClient(new DocumentLayoutResult("# Doc", "{}")),
+            new FakeLayoutClient(new DocumentLayoutResult("# Doc\nExample Supplies INV-100 Paper", "{}")),
             store,
             enableModelExtraction: true,
             classifier: classifier);
@@ -139,10 +142,25 @@ public sealed class ExtractionLayoutPipelineTests
     }
 
     [Fact]
-    public async Task StructuredKindSkipsClassification()
+    public async Task FilenameKindDoesNotBypassContentClassification()
     {
-        var classifier = new FakeClassifier(new DocumentClassification("Contract", 0.99, "x"));
-        var store = await RunClassified("Invoice", new DocumentClassification("Contract", 0.99, "x"), classifier);
+        var classifier = new FakeClassifier(new DocumentClassification("Contract", 0.3, "uncertain"));
+        var store = await RunClassified("Invoice", new DocumentClassification("Contract", 0.3, "uncertain"), classifier);
+
+        Assert.Equal(1, classifier.Calls);
+        Assert.IsType<NeedsClassification>(store.ExtractionOutcome);
+    }
+
+    [Fact]
+    public async Task FilenameKindCanUseLegacyRoutingWhenConfigured()
+    {
+        var classifier = new FakeClassifier(new DocumentClassification("Contract", 0.3, "uncertain"));
+        var store = new FakeJobStore();
+        var pipeline = CreatePipeline(new FakeContentClient(),
+            new FakeLayoutClient(new DocumentLayoutResult("Example Supplies INV-100 Paper", "{}")),
+            store, enableModelExtraction: true, classifier: classifier, classifyKnownKinds: false);
+
+        await pipeline.ProcessAsync(CreateJob(kind: "Invoice"), CancellationToken.None);
 
         Assert.Equal(0, classifier.Calls);
         Assert.IsType<ExtractionSuccess>(store.ExtractionOutcome);

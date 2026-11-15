@@ -52,7 +52,7 @@ RabbitMQ is an internal Container App used for the asynchronous event flow. `ver
 - **Private file storage:** documents are stored in Blob Storage in Azure; local development can use the local configuration.
 - **Revisions:** create text drafts, submit them for review, compare versions, discuss selected text, and approve or reject changes. Restoring an older revision creates a draft.
 - **Asynchronous processing:** transactional outboxes and RabbitMQ queues decouple ingestion, orchestration, extraction, and indexing.
-- **Classification and extraction:** rule-based classification routes known document types. Azure Document Intelligence produces layout text; an LLM can classify unknown document kinds and extract or correct structured data with validators.
+- **Classification and extraction:** Azure Document Intelligence produces layout text; an LLM classifies document content and extracts or corrects structured data with validators. Filename-based kinds are preliminary hints by default.
 - **Search:** deterministic filters, hybrid semantic search, and optional agentic search. Search chunks and vectors are stored in PostgreSQL rather than Azure AI Search. The UI lists each matching source document once (best-scoring hit) with links to open the original or edit it in the revision review; chunk text is not shown.
 - **PDF workflows:** Office-to-PDF uses LibreOffice and PDF/A-2b conversion uses Ghostscript, both installed in the `docmanager` image (`WITH_OFFICE_TOOLS=true`, set by `deploy-backend.yml`). Output is only accepted when the `verapdf` app reports compliance. Locally, the services fall back to a Podman/Docker container if the tools are not installed; see [PDF-A-SETUP.md](./DocuManagementApp/PDF-A-SETUP.md).
 
@@ -92,11 +92,19 @@ The cloud extraction flow uses Azure Document Intelligence for layout analysis a
 
 | Agent | Role |
 |---|---|
-| Classifier | For an unknown kind, proposes a supported kind and confidence from extracted document text. |
+| Classifier | Proposes a supported kind and confidence from document text, with a verbatim evidence excerpt. |
 | Extractor | Produces structured JSON for the selected document kind. |
 | Corrector | Uses validation issues and the previous candidate to propose a corrected result. |
 
-Known kinds are routed deterministically from document metadata. Low-confidence or unsupported classifications are sent for manual review rather than guessed. Validators check extracted JSON; the generate/validate/correct loop is bounded to three attempts. The result status and artifacts are stored, and an indexing request is published for SearchService.
+By default, even a filename-matched kind is checked against document content. The classifier samples the beginning, middle, and end of longer documents. Low-confidence, unsupported, or ungrounded classifications produce a needs-classification outcome; the existing workflow reports this as a failed task and does not provide a review UI. The classification is passed to downstream indexing. The generate/validate/correct loop is bounded to three attempts.
+
+The model is instructed not to translate source values. Selected textual fields must appear verbatim in the extracted layout text; otherwise extraction fails after the correction attempts. Successful extraction artifacts include `sourceEvidence` for those fields, with page numbers when matching layout paragraphs provide them. The original layout text remains available for search.
+
+By default, dates, amounts, quantities and currency must also be copied as original strings and matched to the layout before deterministic normalization. The artifact keeps normalized values in `extractionResult` and exposes the original representations separately in `normalizedValueEvidence`, with page numbers when available. Invoice subtotal, tax, total, and each line item's quantity, unit price and line total must be present in the source; missing values are not assumed to be zero. Ambiguous formats, bare dollar signs and unsupported formats are rejected rather than guessed. These restrictions may cause legitimate documents, including invoices without explicit tax or unit prices, to fail extraction.
+
+These checks only establish that a value appears somewhere in the OCR text; they do not prove that it belongs to the selected field, that every summary or table is grounded, or that a three-letter currency is a valid ISO code. Page matches may be missing or include unrelated occurrences. Exact matching can also reject valid values affected by OCR or formatting. Financial results therefore still require review. The confidence threshold defaults to `0.7` and has not been calibrated for any language. OCR coverage, classification accuracy and language preservation require evaluation with representative documents; support for every language is not guaranteed. The configured model provider receives the document text, subject to its privacy and data-residency policies.
+
+On startup, the extraction service adds the nullable PostgreSQL `normalized_source_values` column if needed; its database role needs permission to alter the table. Existing rows have no normalized-value evidence. For rollout or troubleshooting, `ExtractionProcessing__ClassifyKnownKinds=false` restores the previous filename-kind bypass, `ExtractionProcessing__RequireSourceTextEvidence=false` disables the verbatim-text check, and `ExtractionProcessing__RequireNormalizedSourceValues=false` disables original-value validation and evidence. All default to `true`; disabling them weakens the corresponding safeguards.
 
 ### Agentic search
 
