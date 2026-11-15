@@ -270,6 +270,23 @@ public sealed class OrchestratorDatabase(NpgsqlDataSource dataSource, IDocumentC
 
         if (taskType == "extraction")
         {
+            if (message.DocumentKind is not null)
+            {
+                if (!Enum.TryParse<DocumentKind>(message.DocumentKind, true, out var classifiedKind) ||
+                    !string.Equals(classifiedKind.ToString(), message.DocumentKind, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException($"Unsupported extraction document kind '{message.DocumentKind}'.");
+                }
+
+                await using var updateKind = new NpgsqlCommand("""
+                    UPDATE document_workflows SET document_kind = @kind
+                    WHERE document_id = @document_id AND revision_number = @revision_number;
+                    """, connection, transaction);
+                updateKind.Parameters.AddWithValue("kind", classifiedKind.ToString());
+                updateKind.Parameters.AddWithValue("document_id", documentId);
+                updateKind.Parameters.AddWithValue("revision_number", revisionNumber);
+                await updateKind.ExecuteNonQueryAsync(cancellationToken);
+            }
             var workflow = await GetWorkflowAsync(connection, transaction, documentId, cancellationToken);
             if (workflow is not null && workflow.Value.RevisionNumber == revisionNumber)
             {

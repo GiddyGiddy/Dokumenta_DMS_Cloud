@@ -33,7 +33,6 @@ public class GermanCandidateNormalizerTests
     [Theory]
     [InlineData("1.234,56", 1234.56)]
     [InlineData("1,234.56", 1234.56)]
-    [InlineData("1.234", 1234)]
     [InlineData("12,5", 12.5)]
     [InlineData("-1.000,00 €", -1000)]
     [InlineData("(250,00)", -250)]
@@ -41,5 +40,28 @@ public class GermanCandidateNormalizerTests
     {
         Assert.True(GermanCandidateNormalizer.TryParseNumber(raw, out var number));
         Assert.Equal((decimal)expected, number);
+    }
+
+    [Theory]
+    [InlineData("1.234")]
+    [InlineData("1,234")]
+    public void AmbiguousNumbersAreNotGuessed(string raw)
+    {
+        Assert.False(GermanCandidateNormalizer.TryParseNumber(raw, out _));
+    }
+
+    [Theory]
+    [InlineData("03/04/2026")]
+    [InlineData("03.04.2026")]
+    [InlineData("15.03.24")]
+    public void AmbiguousDatesAreNotGuessed(string raw)
+    {
+        Assert.False(GermanCandidateNormalizer.TryParseDate(raw, out _));
+    }
+
+    [Fact]
+    public void DollarSymbolDoesNotImplyUsCurrency()
+    {
+        Assert.NotEqual("USD", GermanCandidateNormalizer.NormalizeCurrency("$"));
     }
 }
